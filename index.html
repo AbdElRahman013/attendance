@@ -1,0 +1,1310 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>متابعة الحضور والواجبات - Mr. Magdy Abo-Bakr (v7 - 22/11)</title>
+  <!-- ExcelJS preserves 100% of original template formatting, merged cells, colors, borders & column widths -->
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+  <style>
+    :root {
+      --bg: #f3f5f9;
+      --card: #ffffff;
+      --primary: #1e3a8a;
+      --primary-light: #eff6ff;
+      --green: #16a34a;
+      --green-bg: #dcfce7;
+      --red: #dc2626;
+      --red-bg: #fee2e2;
+      --amber: #d97706;
+      --amber-bg: #fef3c7;
+      --purple: #7c3aed;
+      --text: #1e293b;
+      --muted: #64748b;
+      --border: #e2e8f0;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Tahoma, sans-serif; }
+    body { margin: 0; background: var(--bg); color: var(--text); padding-bottom: 95px; }
+    
+    /* Header */
+    .topbar {
+      background: var(--primary);
+      color: #fff;
+      padding: 12px 14px;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    .topbar-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .title { font-size: 16px; font-weight: 700; margin: 0; }
+    .subtitle { font-size: 11px; opacity: 0.85; margin-top: 2px; }
+    .header-actions { display: flex; align-items: center; gap: 6px; }
+    .sync-pill {
+      background: #7c3aed;
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.3);
+      border-radius: 8px;
+      padding: 5px 9px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .date-input {
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.3);
+      color: #fff;
+      border-radius: 8px;
+      padding: 4px 6px;
+      font-size: 11px;
+      width: 105px;
+      text-align: center;
+      direction: ltr;
+    }
+
+    /* Group Tabs */
+    .tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .tab-btn {
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.25);
+      color: #fff;
+      padding: 9px;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 6px;
+    }
+    .tab-btn.active {
+      background: #ffffff;
+      color: var(--primary);
+      border-color: #ffffff;
+    }
+
+    /* Stats Strip */
+    .stats-bar {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      padding: 10px 12px 4px;
+    }
+    .stat-box {
+      background: var(--card);
+      border-radius: 10px;
+      padding: 7px 4px;
+      text-align: center;
+      border: 1px solid var(--border);
+    }
+    .stat-num { font-size: 16px; font-weight: 800; }
+    .stat-lbl { font-size: 10px; color: var(--muted); font-weight: 600; }
+
+    /* Search & Filters */
+    .controls {
+      padding: 8px 12px;
+      position: sticky;
+      top: 98px;
+      background: var(--bg);
+      z-index: 40;
+    }
+    .search-wrap { position: relative; }
+    .search-input {
+      width: 100%;
+      padding: 10px 36px 10px 12px;
+      border-radius: 10px;
+      border: 1px solid #cbd5e1;
+      font-size: 15px;
+      background: #fff;
+      outline: none;
+    }
+    .search-input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(30,58,138,0.15); }
+    .clear-search {
+      position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+      background: #e2e8f0; border: none; border-radius: 50%; width: 22px; height: 22px;
+      font-size: 12px; cursor: pointer; display: none;
+    }
+    .filters {
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      padding-top: 8px;
+      scrollbar-width: none;
+    }
+    .filters::-webkit-scrollbar { display: none; }
+    .chip {
+      padding: 6px 11px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .chip.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+    /* Student Cards */
+    .list { padding: 4px 12px; display: flex; flex-direction: column; gap: 10px; }
+    .card {
+      background: var(--card);
+      border-radius: 14px;
+      padding: 12px;
+      border: 1.5px solid var(--border);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+      transition: border-color 0.15s;
+    }
+    .card.is-present { border-color: #86efac; background: #fafffc; }
+    .card.is-absent { border-color: #fca5a5; background: #fffafa; }
+
+    .card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+    .student-info { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+    .bn-badge {
+      background: var(--primary-light);
+      color: var(--primary);
+      font-weight: 800;
+      font-size: 13px;
+      min-width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .st-name {
+      font-size: 15px;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Attend Button */
+    .attend-btn {
+      padding: 8px 14px;
+      border-radius: 10px;
+      border: 1.5px solid #cbd5e1;
+      background: #f8fafc;
+      color: var(--muted);
+      font-weight: 700;
+      font-size: 13px;
+      cursor: pointer;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .attend-btn.checked {
+      background: var(--green);
+      border-color: var(--green);
+      color: #fff;
+    }
+
+    /* Meta Badges Row */
+    .meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+      align-items: center;
+    }
+    .badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 6px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+    }
+    .badge-abs { background: #f1f5f9; color: #334155; }
+    .badge-abs.high { background: var(--red-bg); color: var(--red); }
+    .badge-egp { background: var(--amber-bg); color: var(--amber); border: 1px solid #fde68a; }
+    .badge-egp.zero { background: #f8fafc; color: #94a3b8; border: 1px solid var(--border); }
+    .badge-cmt { background: #fdf2f8; color: #be185d; max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .badge-more { background: #f1f5f9; color: var(--primary); margin-right: auto; }
+
+    /* Homework Row */
+    .hw-row {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      margin-top: 10px;
+      padding-top: 9px;
+      border-top: 1px dashed var(--border);
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .hw-row::-webkit-scrollbar { display: none; }
+    .hw-label { font-size: 11px; font-weight: 700; color: var(--muted); margin-left: 2px; flex-shrink: 0; }
+    .hw-btn {
+      padding: 5px 8px;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background: #f8fafc;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .hw-btn.selected { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .hw-btn.nohw.selected { background: var(--red); color: #fff; border-color: var(--red); }
+    .hw-btn.absent-tag { background: var(--red-bg); color: var(--red); border-color: #fca5a5; }
+    .hw-btn.absent-btn { color: var(--red); border-color: #fecaca; background: #fff5f5; }
+    .hw-btn.absent-btn.selected { background: var(--red); color: #fff; border-color: var(--red); }
+    .hw-custom {
+      width: 52px;
+      padding: 4px 6px;
+      border-radius: 7px;
+      border: 1px solid #cbd5e1;
+      font-size: 12px;
+      text-align: center;
+      direction: ltr;
+      flex-shrink: 0;
+    }
+
+    /* Role Switcher */
+    .role-select {
+      background: rgba(255,255,255,0.18);
+      border: 1px solid rgba(255,255,255,0.35);
+      color: #fff;
+      border-radius: 8px;
+      padding: 4px 7px;
+      font-size: 11.5px;
+      font-weight: 700;
+      cursor: pointer;
+      outline: none;
+    }
+    .role-select option {
+      background: #1e3a8a;
+      color: #fff;
+    }
+    body.role-assistant .admin-only {
+      display: none !important;
+    }
+
+    /* Bottom Action Bar */
+    .bottom-bar {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: #fff;
+      border-top: 1px solid var(--border);
+      padding: 10px 12px;
+      display: grid;
+      grid-template-columns: 1.15fr 1.15fr auto;
+      gap: 8px;
+      z-index: 60;
+      box-shadow: 0 -2px 10px rgba(0,0,0,0.06);
+    }
+    body.role-assistant .bottom-bar {
+      grid-template-columns: 1fr auto;
+    }
+    .btn-sync-bottom {
+      background: var(--purple);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 11px 12px;
+      font-weight: 700;
+      font-size: 13px;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    body.role-assistant .btn-sync-bottom {
+      display: flex;
+    }
+    .btn-end {
+      background: #dc2626;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 11px 8px;
+      font-weight: 700;
+      font-size: 12.5px;
+      cursor: pointer;
+    }
+    .btn-end.ended { background: #475569; }
+    .btn-export {
+      background: #16a34a;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 11px 8px;
+      font-weight: 700;
+      font-size: 12.5px;
+      cursor: pointer;
+    }
+    .btn-menu {
+      background: #f1f5f9;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0 12px;
+      font-weight: 800;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    /* Modal */
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(15,23,42,0.55);
+      display: none; align-items: flex-end; justify-content: center; z-index: 100;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      background: #fff; width: 100%; max-width: 500px;
+      border-radius: 18px 18px 0 0; padding: 18px 16px 24px;
+      max-height: 90vh; overflow-y: auto;
+    }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .modal-title { font-size: 16px; font-weight: 800; margin: 0; }
+    .close-btn { background: #f1f5f9; border: none; border-radius: 8px; padding: 6px 10px; font-weight: 700; cursor: pointer; }
+    .field-group { margin-bottom: 12px; }
+    .field-label { display: block; font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 4px; }
+    .field-input, .sync-textarea {
+      width: 100%; padding: 9px 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px;
+    }
+    .sync-textarea { font-family: monospace; font-size: 11px; direction: ltr; height: 78px; resize: none; background: #f8fafc; }
+    .tests-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+    .test-box { background: #f8fafc; padding: 6px; border-radius: 8px; border: 1px solid var(--border); text-align: center; }
+    .test-box label { display: block; font-size: 10px; font-weight: 700; color: var(--muted); direction: ltr; }
+    .test-box input { width: 100%; border: 1px solid #cbd5e1; border-radius: 5px; padding: 4px; text-align: center; font-size: 13px; margin-top: 3px; direction: ltr; }
+    .btn-save { width: 100%; background: var(--primary); color: #fff; border: none; padding: 12px; border-radius: 10px; font-weight: 700; font-size: 14px; cursor: pointer; margin-top: 6px; }
+    .btn-purple { width: 100%; background: var(--purple); color: #fff; border: none; padding: 11px; border-radius: 10px; font-weight: 700; font-size: 13px; cursor: pointer; }
+    .btn-pay { background: var(--green); color: #fff; border: none; padding: 8px 12px; border-radius: 8px; font-weight: 700; font-size: 12px; cursor: pointer; }
+    .row-flex { display: flex; gap: 8px; align-items: center; }
+    .sync-box {
+      background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 12px; padding: 12px; margin-bottom: 12px;
+    }
+    .sync-step-title { font-size: 13px; font-weight: 800; color: #5b21b6; margin: 0 0 6px; }
+    .sync-desc { font-size: 12px; color: #4c1d95; margin: 0 0 8px; line-height: 1.45; }
+    .toast {
+      position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+      background: #0f172a; color: #fff; padding: 9px 16px; border-radius: 20px;
+      font-size: 13px; font-weight: 600; z-index: 200; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+  </style>
+</head>
+<body>
+<noscript>
+  <div style="background:#fef3c7;color:#92400e;border:2px solid #d97706;margin:12px;padding:14px;border-radius:12px;font-size:15px;line-height:1.8;text-align:right;direction:rtl">
+    ⚠️ الصفحة مفتوحة في وضع المعاينة (JavaScript متوقف) فمش هتظهر الأزرار ولا بيانات الطلاب.<br>
+    افتح الملف من <b>سفاري/كروم عن طريق رابط</b> (استضافة)، أو من تطبيق <b>Documents by Readdle</b>.
+  </div>
+</noscript>
+
+<div class="toast" id="toast"></div>
+
+<div class="topbar">
+  <div class="topbar-row">
+    <div>
+      <h1 class="title">Mr. Magdy Abo-Bakr</h1>
+      <div class="subtitle" id="sessionStatusText">تصدير بنفس القالب الأصلي • حفظ تلقائي</div>
+    </div>
+    <div class="header-actions">
+      <select class="role-select" id="roleSelect" onchange="changeRole(this.value)" title="اختر الصلاحية">
+        <option value="assistant">👤 مساعد</option>
+        <option value="admin">👑 مدير</option>
+      </select>
+      <button class="sync-pill" onclick="openSyncModal()">⇄ دمج / مشاركة</button>
+      <input type="text" class="date-input" id="sessionDateInput" onchange="updateDate(this.value)" />
+    </div>
+  </div>
+  <div class="tabs">
+    <button class="tab-btn active" id="tab-boys" onclick="switchGroup('boys')">الأولاد (<span id="count-boys">0</span>)</button>
+    <button class="tab-btn" id="tab-girls" onclick="switchGroup('girls')">البنات (<span id="count-girls">0</span>)</button>
+  </div>
+</div>
+
+<div class="stats-bar">
+  <div class="stat-box"><div class="stat-num" style="color:var(--primary)" id="stat-total">0</div><div class="stat-lbl">الإجمالي</div></div>
+  <div class="stat-box"><div class="stat-num" style="color:var(--green)" id="stat-present">0</div><div class="stat-lbl">حضور ✓</div></div>
+  <div class="stat-box"><div class="stat-num" style="color:var(--red)" id="stat-absent">0</div><div class="stat-lbl">لم يحضر</div></div>
+  <div class="stat-box"><div class="stat-num" style="color:var(--amber)" id="stat-nohw">0</div><div class="stat-lbl">بدون واجب</div></div>
+</div>
+
+<div class="controls">
+  <div class="search-wrap">
+    <input type="text" class="search-input" id="searchInput" placeholder="ابحث بالاسم أو رقم B.N. ..." oninput="handleSearch()" />
+    <button class="clear-search" id="clearSearchBtn" onclick="clearSearch()">✕</button>
+  </div>
+  <div class="filters">
+    <button class="chip active" data-filter="all" onclick="setFilter('all', this)">الكل</button>
+    <button class="chip" data-filter="present" onclick="setFilter('present', this)">الحضور ✓</button>
+    <button class="chip" data-filter="unmarked" onclick="setFilter('unmarked', this)">لم يحضر بعد</button>
+    <button class="chip" data-filter="nohw" onclick="setFilter('nohw', this)">No HW</button>
+    <button class="chip" data-filter="pending_hw" onclick="setFilter('pending_hw', this)">حاضر بدون درجة</button>
+    <button class="chip" data-filter="egp" onclick="setFilter('egp', this)">عليه 30 EGP</button>
+  </div>
+</div>
+
+<div class="list" id="studentList"></div>
+
+<div class="bottom-bar">
+  <button class="btn-end admin-only" id="endSessionBtn" onclick="toggleEndSession()">إنهاء الحصة واحتساب الغياب</button>
+  <button class="btn-export admin-only" onclick="exportFormattedExcel()">تصدير Excel الأصلي ⬇️</button>
+  <button class="btn-sync-bottom" onclick="openSyncModal()">⇄ دمج ومشاركة التعديلات (حفظ تلقائي ✓)</button>
+  <button class="btn-menu" onclick="openToolsModal()">⋮</button>
+</div>
+
+<!-- Admin password modal -->
+<div class="modal-backdrop" id="pwModal" onclick="closePwModal(event)">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-header">
+      <h3 class="modal-title">👑 دخول وضع المدير</h3>
+      <button class="close-btn" onclick="cancelPw()">إلغاء</button>
+    </div>
+    <div class="field-group">
+      <label class="field-label" for="pwInput">كلمة السر</label>
+      <input type="password" class="field-input" id="pwInput" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" style="direction:ltr;text-align:left" onkeydown="if(event.key==='Enter')submitPw()" />
+      <div id="pwError" style="color:#dc2626;font-size:12px;font-weight:700;margin-top:6px;min-height:16px"></div>
+    </div>
+    <button class="btn-save" onclick="submitPw()">دخول</button>
+  </div>
+</div>
+
+<!-- Sync / Merge Modal for Multiple Assistants -->
+<div class="modal-backdrop" id="syncModal" onclick="closeModalOnBg(event, 'syncModal')">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 class="modal-title">⇄ مشاركة ودمج تصحيح الواجب بين الموبايلات</h3>
+      <button class="close-btn" onclick="closeModal('syncModal')">إغلاق</button>
+    </div>
+
+    <div class="sync-box">
+      <h4 class="sync-step-title">1️⃣ إرسال شغلك لزميلك (على واتساب):</h4>
+      <p class="sync-desc">
+        بعد ما تخلص تسجيل الدخول على الباب أو تصحيح شوية كشاكيل، اضغط الزر ده وابعت الكود على جروب الأسيستانتس في واتساب:
+      </p>
+      <div class="row-flex">
+        <button class="btn-purple" onclick="copySyncCode()">📋 نسخ كود التعديلات ومشاركته</button>
+        <button class="btn-pay" style="white-space:nowrap; padding:11px 12px;" onclick="shareSyncWhatsApp()">واتساب ↗</button>
+      </div>
+    </div>
+
+    <div class="sync-box" style="background:#eff6ff; border-color:#bfdbfe;">
+      <h4 class="sync-step-title" style="color:#1e3a8a;">2️⃣ استقبال ودمج شغل زميلك في شيتك:</h4>
+      <p class="sync-desc" style="color:#1e40af;">
+        انسخ الكود اللي زميلك بعته على واتساب، والصقه هنا، واضغط <strong>"دمج التعديلات"</strong>. النظام هيجمع درجات الواجب والحضور والتعليقات بذكاء من غير ما يمسح شغلك!
+      </p>
+      <textarea class="sync-textarea" id="pasteSyncInput" placeholder="الصق كود المزامنة هنا (يبدأ بـ SYNC_V1:) ..."></textarea>
+      <button class="btn-save" onclick="mergeSyncCode()">🔄 دمج التعديلات الآن</button>
+    </div>
+  </div>
+</div>
+
+<!-- Student Details Modal -->
+<div class="modal-backdrop" id="studentModal" onclick="closeModalOnBg(event, 'studentModal')">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 class="modal-title" id="modalStudentTitle">بيانات الطالب</h3>
+      <button class="close-btn" onclick="closeModal('studentModal')">إغلاق</button>
+    </div>
+    
+    <div class="field-group">
+      <label class="field-label">الغرامات المستحقة (عمود 30 EGP)</label>
+      <div class="row-flex">
+        <input type="number" class="field-input" id="editEgp" step="30" />
+        <button class="btn-pay" onclick="payFullEgp()">سداد وتصفير (0)</button>
+      </div>
+    </div>
+
+    <div class="field-group">
+      <label class="field-label">إجمالي مرات الغياب (Absences)</label>
+      <input type="number" class="field-input" id="editAbsences" />
+    </div>
+
+    <div class="field-group">
+      <label class="field-label">التعليقات والعقوبات (Comments !!)</label>
+      <input type="text" class="field-input" id="editComments" placeholder="مثال: D.A أو ملاحظة..." />
+    </div>
+
+    <div class="field-group">
+      <label class="field-label">درجات الاختبارات (M-5 إلى M-11)</label>
+      <div class="tests-grid">
+        <div class="test-box"><label>M-(5)</label><input type="text" id="editM5"></div>
+        <div class="test-box"><label>M-(6)</label><input type="text" id="editM6"></div>
+        <div class="test-box"><label>M-(7)</label><input type="text" id="editM7"></div>
+        <div class="test-box"><label>M-(8)</label><input type="text" id="editM8"></div>
+        <div class="test-box"><label>M-(9)</label><input type="text" id="editM9"></div>
+        <div class="test-box"><label>M-(10)</label><input type="text" id="editM10"></div>
+        <div class="test-box"><label>M-(11)</label><input type="text" id="editM11"></div>
+      </div>
+    </div>
+
+    <button class="btn-save" onclick="saveStudentDetails()">حفظ التعديلات</button>
+  </div>
+</div>
+
+<!-- Tools / Backup Modal -->
+<div class="modal-backdrop" id="toolsModal" onclick="closeModalOnBg(event, 'toolsModal')">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 class="modal-title">إدارة البيانات والقوالب</h3>
+      <button class="close-btn" onclick="closeModal('toolsModal')">إغلاق</button>
+    </div>
+    <p style="font-size:13px; color:var(--muted); line-height:1.5;">
+      ملفات التصدير تُبنى مباشرة فوق قوالبك الأصلية المدمجة لتحافظ على الألوان، الخطوط، دمج الخلايا، وعرض الأعمدة بالمللي.
+    </p>
+    <div style="display:flex; flex-direction:column; gap:10px; margin-top:12px;">
+      <button class="btn-export admin-only" onclick="exportFormattedExcel('boys')">تحميل شيت الأولاد بالتنسيق الأصلي (Boys.xlsx)</button>
+      <button class="btn-export admin-only" onclick="exportFormattedExcel('girls')">تحميل شيت البنات بالتنسيق الأصلي (Girls.xlsx)</button>
+      <button class="btn-purple" onclick="closeModal('toolsModal'); openSyncModal();">⇄ دمج ومشاركة التعديلات مع باقي المساعدين</button>
+      <button class="btn-save" style="background:#0284c7;" onclick="startNewSession()">بدء حصة جديدة (تصفير الحضور والواجب فقط)</button>
+      <button class="btn-end admin-only" style="background:#991b1b;" onclick="resetAllData()">إعادة ضبط البيانات للنسخة الأصلية المرفقة</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const TEMPLATE_BOYS_B64 = "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";
+const TEMPLATE_GIRLS_B64 = "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";
+const DEFAULT_DB = {"boys": [{"row": 4, "bn": 1, "name": "احمد أسامة", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "18", "comments": "", "absences": 2, "updatedAt": 0}, {"row": 5, "bn": 2, "name": "احمد تامر", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "14", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 6, "bn": 3, "name": "احمد عاصم عبدالله", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "25", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 7, "bn": 4, "name": "احمد عمرو عبدالله", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "20", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 8, "bn": 5, "name": "احمد مصطفى محمود", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "22", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 9, "bn": 6, "name": "احمد وائل فاروق", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "24", "m10": "", "m11": "", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 10, "bn": 7, "name": "ادهم على صلاح الدين", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "20.5", "m10": "", "m11": "", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 11, "bn": 8, "name": "إبراهيم محمد إبراهيم", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "15", "comments": "", "absences": 1, "updatedAt": 0}, {"row": 12, "bn": 9, "name": "إياد طارق فاروق", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "15", "comments": "20 rules", "absences": 2, "updatedAt": 0}, {"row": 13, "bn": 10, "name": "باسل هلال سمير ابراهيم", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "13", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 14, "bn": 11, "name": "تيام ادهم ابراهيم الدسوقي", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "24", "m10": "", "m11": "", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 15, "bn": 12, "name": "حازم احمد عبدالموجود", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "21", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 16, "bn": 13, "name": "حسن سعيد حسن", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "13", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 17, "bn": 14, "name": "حمزه احمد عبدالفتاح", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "18", "comments": "20 rules", "absences": 0, "updatedAt": 0}, {"row": 18, "bn": 15, "name": "زياد إسلام محمد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "11", "comments": "20 rules", "absences": 0, "updatedAt": 0}, {"row": 19, "bn": 16, "name": "زياد زاهر خالد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "22", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 20, "bn": 17, "name": "ساجد احمد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "21", "m10": "", "m11": "", "comments": "20 rules", "absences": 0, "updatedAt": 0}, {"row": 21, "bn": 18, "name": "سيف الدين سامح فؤاد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "9", "comments": "", "absences": 1, "updatedAt": 0}, {"row": 22, "bn": 19, "name": "سيف عادل محمد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "11", "comments": "20 rules", "absences": 0, "updatedAt": 0}, {"row": 23, "bn": 20, "name": "سيف محمد سعيد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "23", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 24, "bn": 21, "name": "صبري", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "12", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 25, "bn": 22, "name": "عبد الرحمن اشرف حامد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "26", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 26, "bn": 23, "name": "عبد الرحمن عمرو", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "9", "comments": "30 rules", "absences": 0, "updatedAt": 0}, {"row": 27, "bn": 24, "name": "عبد الله أمجد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "8", "comments": "test", "absences": 0, "updatedAt": 0}, {"row": 28, "bn": 25, "name": "علي طارق مصطفى", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "16", "comments": "", "absences": 1, "updatedAt": 0}, {"row": 29, "bn": 26, "name": "عمار هشام", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "12", "comments": "", "absences": 1, "updatedAt": 0}, {"row": 30, "bn": 27, "name": "عمر خالد احمد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "14", "comments": "", "absences": 2, "updatedAt": 0}, {"row": 31, "bn": 28, "name": "عمر سعد الدين", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "17", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 32, "bn": 29, "name": "عمر عبدالله محمد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "17", "comments": "20 rules", "absences": 0, "updatedAt": 0}, {"row": 33, "bn": 30, "name": "عمر عصام كامل", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "10", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 34, "bn": 31, "name": "عمر ماهر", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "11", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 35, "bn": 32, "name": "عمر وليد أبوالسعود", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "Absent", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "", "comments": "2test", "absences": 0, "updatedAt": 0}, {"row": 36, "bn": 33, "name": "فارس إسلام فارس", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "20", "comments": "20 rules", "absences": 0, "updatedAt": 0}, {"row": 37, "bn": 34, "name": "لؤي وليد حسين", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "15", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 38, "bn": 35, "name": "ماثيو ريمون رءوف", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "17", "comments": "", "absences": 5, "updatedAt": 0}, {"row": 39, "bn": 36, "name": "مازن علاء الدين", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "10", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 40, "bn": 37, "name": "محمد اكرم محمد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "22", "m10": "", "m11": "", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 41, "bn": 38, "name": "محمد خالد محمد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "23", "m10": "", "m11": "", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 42, "bn": 39, "name": "محمد سعيد محمد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "23", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 43, "bn": 40, "name": "محمد صلاح", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "10", "comments": "", "absences": 4, "updatedAt": 0}, {"row": 44, "bn": 41, "name": "محمد محمود سالم", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "19", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 45, "bn": 42, "name": "محمد هاني عبد القوي", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "14", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 46, "bn": 43, "name": "محمد وليد احمد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "19", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 47, "bn": 44, "name": "محمد وليد حسني", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "20", "comments": "", "absences": 1, "updatedAt": 0}, {"row": 48, "bn": 45, "name": "محمود احمد الدغيدي", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "14", "comments": "", "absences": 1, "updatedAt": 0}, {"row": 49, "bn": 46, "name": "محمود خميس بيومي", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "21", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 50, "bn": 47, "name": "محمود رؤوف علي", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "18", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 51, "bn": 48, "name": "محمود فريد", "egp30": 30, "hw_old": "Absent", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "14", "m10": "", "m11": "", "comments": "", "absences": 3, "updatedAt": 0}, {"row": 52, "bn": 49, "name": "مصطفي حماده حماد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "14", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 53, "bn": 50, "name": "معاذ عادل حسن", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "22", "m10": "", "m11": "", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 54, "bn": 51, "name": "معاذ مصطفي فاضل", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "22", "comments": "", "absences": 1, "updatedAt": 0}, {"row": 55, "bn": 52, "name": "معاذ هاني محمود", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "17", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 56, "bn": 53, "name": "معتز عمر محمد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "17", "comments": "20 rules", "absences": 1, "updatedAt": 0}, {"row": 57, "bn": 54, "name": "مهند محمد محمد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "22", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 58, "bn": 55, "name": "مينا سامح وهسب", "egp30": 30, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "9", "comments": "", "absences": 2, "updatedAt": 0}, {"row": 59, "bn": 56, "name": "ياسين محمد سعيد", "egp30": 0, "hw_old": "NoHW", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "13", "comments": "test sat", "absences": 0, "updatedAt": 0}, {"row": 60, "bn": 57, "name": "يوسف اسامه محمد عاطف", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "11", "comments": "", "absences": 4, "updatedAt": 0}, {"row": 61, "bn": 58, "name": "يونس حمدي", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "16", "comments": "", "absences": 2, "updatedAt": 0}], "girls": [{"row": 4, "bn": 1, "name": "ايلاريا ايهاب عزت", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "26", "m10": "", "m11": "", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 5, "bn": 2, "name": "إيرينى خالد صدقى", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "8", "comments": "", "absences": 2, "updatedAt": 0}, {"row": 6, "bn": 3, "name": "أروي طارق سيد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "15", "comments": "", "absences": 3, "updatedAt": 0}, {"row": 7, "bn": 4, "name": "أريج صلاح الدين مصطفى", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "25", "m10": "", "m11": "", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 8, "bn": 5, "name": "أيسل سامح احمد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "21", "m10": "", "m11": "", "comments": "", "absences": 1, "updatedAt": 0}, {"row": 9, "bn": 6, "name": "تسنيم محمد فرج", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "11", "comments": "", "absences": 1, "updatedAt": 0}, {"row": 10, "bn": 7, "name": "تقي محمد السيد المدثر", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "16", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 11, "bn": 8, "name": "جني سمير أبو العنين", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "18", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 12, "bn": 9, "name": "جني محمد عبد الرؤوف", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "20", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 13, "bn": 10, "name": "جودي احمد عبد الفتاح", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "12", "comments": "", "absences": 1, "updatedAt": 0}, {"row": 14, "bn": 11, "name": "جوي ماجد جرجس", "egp30": 30, "hw_old": "Absent", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "10", "comments": "", "absences": 5, "updatedAt": 0}, {"row": 15, "bn": 12, "name": "حبيبه محمد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "14", "comments": "", "absences": 1, "updatedAt": 0}, {"row": 16, "bn": 13, "name": "حبيبه مصطفي احمد عمر", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "17", "comments": "", "absences": 3, "updatedAt": 0}, {"row": 17, "bn": 14, "name": "حلا محمد عبد الرحمن", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "23", "m10": "", "m11": "", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 18, "bn": 15, "name": "حنين رمضان سيد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "17", "comments": "", "absences": 2, "updatedAt": 0}, {"row": 19, "bn": 16, "name": "خلود وائل سعد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "13", "comments": "", "absences": 2, "updatedAt": 0}, {"row": 20, "bn": 17, "name": "رحمه محمد فؤاد", "egp30": 30, "hw_old": "Absent", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "16", "comments": "", "absences": 2, "updatedAt": 0}, {"row": 21, "bn": 18, "name": "رقية رأفت عبد المطلب", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "25", "m10": "", "m11": "", "comments": "", "absences": 1, "updatedAt": 0}, {"row": 22, "bn": 19, "name": "رقية طلعت فوزي", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "14", "comments": "20 Rules", "absences": 5, "updatedAt": 0}, {"row": 23, "bn": 20, "name": "رقية محمد جابر", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "24", "comments": "20 Rules", "absences": 0, "updatedAt": 0}, {"row": 24, "bn": 21, "name": "رنا عمرو سيف النصر", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "14", "comments": "20 Rules", "absences": 0, "updatedAt": 0}, {"row": 25, "bn": 22, "name": "روان يحيى السيد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "21", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 26, "bn": 23, "name": "رودينا حربي خلف الله", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "21", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 27, "bn": 24, "name": "رودينا عمرو", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "6", "comments": "", "absences": 1, "updatedAt": 0}, {"row": 28, "bn": 25, "name": "روضة احمد محمد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "11", "comments": "", "absences": 2, "updatedAt": 0}, {"row": 29, "bn": 26, "name": "ريتاج ابراهيم محمود", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "13", "comments": "", "absences": 1, "updatedAt": 0}, {"row": 30, "bn": 27, "name": "سارة محمد سيد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "27", "m10": "", "m11": "", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 31, "bn": 28, "name": "سلمى صابر عيد محمد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "20", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 32, "bn": 29, "name": "سلمى عبدالعزيز محمد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "18", "m10": "", "m11": "", "comments": "30 Rules", "absences": 0, "updatedAt": 0}, {"row": 33, "bn": 30, "name": "سلمى مصطفى سلامة", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "20", "m10": "", "m11": "", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 34, "bn": 31, "name": "سما حسين عبدالرسول", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "15", "comments": "Test Saturday", "absences": 3, "updatedAt": 0}, {"row": 35, "bn": 32, "name": "سما محمد الدهشان", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "21", "m10": "", "m11": "", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 36, "bn": 33, "name": "سهيله احمد علي عبد السلام", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "18", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 37, "bn": 34, "name": "سهيله عماد طلعت", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "19", "comments": "20 rules", "absences": 0, "updatedAt": 0}, {"row": 38, "bn": 35, "name": "شهد محمد زكي", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "21", "comments": "", "absences": 1, "updatedAt": 0}, {"row": 39, "bn": 36, "name": "عاليه محمد أنور", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "17", "comments": "", "absences": 1, "updatedAt": 0}, {"row": 40, "bn": 37, "name": "فرح ضياء الدين فتحي امين", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "21", "m10": "", "m11": "", "comments": "", "absences": 1, "updatedAt": 0}, {"row": 41, "bn": 38, "name": "فرح محمود طه", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "17", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 42, "bn": 39, "name": "كرستين روماني انيس", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "10", "comments": "", "absences": 1, "updatedAt": 0}, {"row": 43, "bn": 40, "name": "مايا محمد عبد الفتاح محمد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "11", "comments": "", "absences": 1, "updatedAt": 0}, {"row": 44, "bn": 41, "name": "مروة حاتم البنداري", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "21", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 45, "bn": 42, "name": "مريم اسامه محمد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "19", "comments": "", "absences": 2, "updatedAt": 0}, {"row": 46, "bn": 43, "name": "مريم حسام الدين مصطفى", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "12", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 47, "bn": 44, "name": "مريم عزت عبدالحميد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "16", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 48, "bn": 45, "name": "مريم محمد عبد المرضي", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "14", "comments": "20 rules", "absences": 0, "updatedAt": 0}, {"row": 49, "bn": 46, "name": "مريم معتز محمد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "13", "comments": "", "absences": 1, "updatedAt": 0}, {"row": 50, "bn": 47, "name": "مريم وائل علي", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "23", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 51, "bn": 48, "name": "ملك أحمد مرسي", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "20", "comments": "", "absences": 4, "updatedAt": 0}, {"row": 52, "bn": 49, "name": "ملك صالح عبدالحافظ", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "14", "comments": "Test saturday", "absences": 0, "updatedAt": 0}, {"row": 53, "bn": 50, "name": "ملك عمرو احمد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "22", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 54, "bn": 51, "name": "ملك محمد عبدالمعطي", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "17", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 55, "bn": 52, "name": "منة اسلام محمد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "26", "m10": "", "m11": "", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 56, "bn": 53, "name": "منة عبد الخالق عبد الله", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "18", "m10": "", "m11": "", "comments": "", "absences": 1, "updatedAt": 0}, {"row": 57, "bn": 54, "name": "منه احمد محمدين", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "12", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 58, "bn": 55, "name": "منه الله ايهاب سعيد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "19", "m10": "", "m11": "", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 59, "bn": 56, "name": "منه وليد امين", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "16", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 60, "bn": 57, "name": "نور ايمن", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "8", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 61, "bn": 58, "name": "نور سيد عبد الشافي", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "20", "comments": "", "absences": 0, "updatedAt": 0}, {"row": 62, "bn": 59, "name": "نور محمد شعبان", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "15", "comments": "20 rules", "absences": 1, "updatedAt": 0}, {"row": 63, "bn": 60, "name": "نوران رماح سامي", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "15", "comments": "", "absences": 1, "updatedAt": 0}, {"row": 64, "bn": 61, "name": "يارا جازولي احمد", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "15", "comments": "Test sat + 20 Rules", "absences": 0, "updatedAt": 0}, {"row": 65, "bn": 62, "name": "يمنى محمد عثمان", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "13", "comments": "", "absences": 1, "updatedAt": 0}, {"row": 66, "bn": 63, "name": "يوستينا ميلاد جابر", "egp30": 0, "hw_old": "", "hw": "", "present": false, "m5": "", "m6": "", "m7": "", "m8": "", "m9": "", "m10": "", "m11": "14", "comments": "", "absences": 0, "updatedAt": 0}], "sessionEnded": {"boys": false, "girls": false}, "sessionDate": "22 /  11  / 2026"};
+const STORAGE_KEY = 'magdy_attendance_22_11_v6';
+const ROLE_STORAGE_KEY = 'magdy_attendance_role_v2';
+
+let db = loadDB();
+let currentRole = loadRole();
+let currentGroup = 'boys';
+let currentFilter = 'all';
+let searchQuery = '';
+let editingStudentBn = null;
+
+/* ===== Admin password =====
+   كلمة السر مخزنة كـ SHA-256 hash (مش نص صريح). لتغييرها: ابعتلي الباسورد الجديد وهطلعلك الـ hash،
+   أو في الكونسول: sha256Hex(ADMIN_SALT + 'الباسورد الجديد') وحط الناتج في ADMIN_PW_HASH. */
+const ADMIN_SALT = 'magdy-attendance-v7|';
+const ADMIN_PW_HASH = '8c8dfcad02fbdd01c846d7aa6c451b66c09645c44b5281df43a89fd1e97cd9e3';
+const ADMIN_SESSION_KEY = 'magdy_attendance_admin_session';
+let pwFails = 0, pwLockUntil = 0;
+
+function sha256Hex(str) {
+  const msg = unescape(encodeURIComponent(str));
+  const K = [0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+  let H = [0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+  const bytes = [];
+  for (let i = 0; i < msg.length; i++) bytes.push(msg.charCodeAt(i));
+  const bitLen = bytes.length * 8;
+  bytes.push(0x80);
+  while (bytes.length % 64 !== 56) bytes.push(0);
+  const hi = Math.floor(bitLen / 0x100000000), lo = bitLen >>> 0;
+  [hi, lo].forEach(v => { bytes.push((v >>> 24) & 255, (v >>> 16) & 255, (v >>> 8) & 255, v & 255); });
+  const rotr = (x, n) => (x >>> n) | (x << (32 - n));
+  for (let off = 0; off < bytes.length; off += 64) {
+    const w = new Array(64);
+    for (let i = 0; i < 16; i++) w[i] = (bytes[off+4*i] << 24) | (bytes[off+4*i+1] << 16) | (bytes[off+4*i+2] << 8) | bytes[off+4*i+3];
+    for (let i = 16; i < 64; i++) {
+      const s0 = rotr(w[i-15],7) ^ rotr(w[i-15],18) ^ (w[i-15] >>> 3);
+      const s1 = rotr(w[i-2],17) ^ rotr(w[i-2],19) ^ (w[i-2] >>> 10);
+      w[i] = (w[i-16] + s0 + w[i-7] + s1) | 0;
+    }
+    let [a,b,c,d,e,f,g,h] = H;
+    for (let i = 0; i < 64; i++) {
+      const S1 = rotr(e,6) ^ rotr(e,11) ^ rotr(e,25);
+      const ch = (e & f) ^ (~e & g);
+      const t1 = (h + S1 + ch + K[i] + w[i]) | 0;
+      const S0 = rotr(a,2) ^ rotr(a,13) ^ rotr(a,22);
+      const maj = (a & b) ^ (a & c) ^ (b & c);
+      const t2 = (S0 + maj) | 0;
+      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;
+    }
+    H = [(H[0]+a)|0,(H[1]+b)|0,(H[2]+c)|0,(H[3]+d)|0,(H[4]+e)|0,(H[5]+f)|0,(H[6]+g)|0,(H[7]+h)|0];
+  }
+  return H.map(x => ('00000000' + (x >>> 0).toString(16)).slice(-8)).join('');
+}
+
+function loadRole() {
+  // وضع المدير مش بيتحفظ بشكل دائم: بيفضل بس طول جلسة التصفح الحالية
+  try {
+    if (sessionStorage.getItem(ADMIN_SESSION_KEY) === ADMIN_PW_HASH) return 'admin';
+  } catch (e) {}
+  try { localStorage.removeItem(ROLE_STORAGE_KEY); } catch (e) {} // مسح أي صلاحية مدير قديمة محفوظة
+  return 'assistant'; // الوضع الافتراضي الآمن للمساعدين
+}
+
+function openPwModal() {
+  document.getElementById('pwInput').value = '';
+  document.getElementById('pwError').textContent = '';
+  document.getElementById('pwModal').classList.add('open');
+  setTimeout(() => { try { document.getElementById('pwInput').focus(); } catch (e) {} }, 150);
+}
+
+function cancelPw() {
+  document.getElementById('pwModal').classList.remove('open');
+  document.getElementById('pwInput').value = '';
+  applyRoleUI(); // يرجّع القائمة لوضع المساعد
+}
+
+function closePwModal(e) {
+  if (e.target.id === 'pwModal') cancelPw();
+}
+
+function submitPw() {
+  const now = Date.now();
+  const err = document.getElementById('pwError');
+  if (now < pwLockUntil) {
+    err.textContent = 'محاولات كتير غلط. استنى ' + Math.ceil((pwLockUntil - now) / 1000) + ' ثانية.';
+    return;
+  }
+  const val = document.getElementById('pwInput').value;
+  if (sha256Hex(ADMIN_SALT + val) === ADMIN_PW_HASH) {
+    pwFails = 0;
+    document.getElementById('pwModal').classList.remove('open');
+    document.getElementById('pwInput').value = '';
+    currentRole = 'admin';
+    try { sessionStorage.setItem(ADMIN_SESSION_KEY, ADMIN_PW_HASH); } catch (e) {}
+    applyRoleUI();
+    showToast('تم التبديل إلى وضع المدير 👑 (كل الصلاحيات مفعلة)');
+  } else {
+    pwFails++;
+    document.getElementById('pwInput').value = '';
+    if (pwFails >= 5) {
+      pwLockUntil = now + 60000;
+      pwFails = 0;
+      err.textContent = 'محاولات كتير غلط. استنى دقيقة وحاول تاني.';
+    } else {
+      err.textContent = 'كلمة السر غلط';
+    }
+  }
+}
+
+function applyRoleUI() {
+  document.body.classList.toggle('role-assistant', currentRole === 'assistant');
+  const sel = document.getElementById('roleSelect');
+  if (sel) sel.value = currentRole;
+  renderStats();
+}
+
+function changeRole(newRole) {
+  if (newRole === 'admin') {
+    if (currentRole === 'admin') return;
+    openPwModal(); // مش هيتبدل غير بعد كلمة السر الصح
+    const sel = document.getElementById('roleSelect');
+    if (sel) sel.value = 'assistant';
+  } else {
+    currentRole = 'assistant';
+    try { sessionStorage.removeItem(ADMIN_SESSION_KEY); } catch (e) {}
+    applyRoleUI();
+    showToast('تم التبديل إلى وضع المساعد 👤 (الحفظ التلقائي والدمج مفعلان)');
+  }
+}
+
+function loadDB() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) return JSON.parse(saved);
+  } catch (e) {}
+  return JSON.parse(JSON.stringify(DEFAULT_DB));
+}
+
+function saveDB() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+  } catch (e) {
+    showToast('تنبيه: تعذر الحفظ في ذاكرة المتصفح');
+  }
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(() => { t.style.display = 'none'; }, 2800);
+}
+
+function updateDate(val) {
+  db.sessionDate = val;
+  saveDB();
+}
+
+function switchGroup(grp) {
+  currentGroup = grp;
+  document.getElementById('tab-boys').classList.toggle('active', grp === 'boys');
+  document.getElementById('tab-girls').classList.toggle('active', grp === 'girls');
+  applyRoleUI();
+render();
+}
+
+function handleSearch() {
+  const inp = document.getElementById('searchInput');
+  searchQuery = inp.value.trim().toLowerCase();
+  document.getElementById('clearSearchBtn').style.display = searchQuery ? 'block' : 'none';
+  renderList();
+}
+
+function clearSearch() {
+  document.getElementById('searchInput').value = '';
+  searchQuery = '';
+  document.getElementById('clearSearchBtn').style.display = 'none';
+  renderList();
+}
+
+function setFilter(f, el) {
+  currentFilter = f;
+  document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  renderList();
+}
+
+function togglePresence(bn) {
+  if (db.sessionEnded[currentGroup]) {
+    showToast('الحصة منتهية! افتحها أولاً من الزر بالأسفل للتعديل');
+    return;
+  }
+  const st = db[currentGroup].find(s => s.bn === bn);
+  if (!st) return;
+  st.present = !st.present;
+  st.updatedAt = Date.now();
+  if (st.present && st.hw === 'absent') {
+    st.hw = '';
+  }
+  saveDB();
+  render();
+}
+
+function setHw(bn, val) {
+  const st = db[currentGroup].find(s => s.bn === bn);
+  if (!st) return;
+  if (st.hw === val) {
+    st.hw = '';
+  } else {
+    st.hw = val;
+    if (val === 'absent') {
+      st.present = false;
+    } else if (!st.present && !db.sessionEnded[currentGroup]) {
+      st.present = true;
+    }
+  }
+  st.updatedAt = Date.now();
+  saveDB();
+  render();
+}
+
+function setCustomHw(bn, inputEl) {
+  let v = inputEl.value.trim();
+  const st = db[currentGroup].find(s => s.bn === bn);
+  if (!st) return;
+  if (v === '') {
+    st.hw = '';
+  } else {
+    if (!v.includes('%') && !isNaN(v)) v = v + '%';
+    st.hw = v;
+    if (!st.present && !db.sessionEnded[currentGroup]) {
+      st.present = true;
+    }
+  }
+  st.updatedAt = Date.now();
+  saveDB();
+  renderStats();
+}
+
+function toggleEndSession() {
+  if (currentRole !== 'admin') {
+    showToast('هذه الصلاحية متاحة للمدير فقط');
+    return;
+  }
+  const list = db[currentGroup];
+  const isEnded = db.sessionEnded[currentGroup];
+  const grpName = currentGroup === 'boys' ? 'الأولاد' : 'البنات';
+
+  if (!isEnded) {
+    const presentCount = list.filter(s => s.present).length;
+    const absentCount = list.length - presentCount;
+    const pendingHw = list.filter(s => s.present && !s.hw).length;
+
+    const msg = `تأكيد إنهاء حصة (${grpName}):\n` +
+                `• الحاضرون: ${presentCount}\n` +
+                `• الغائبون: ${absentCount} (سيتم تسجيلهم absent وزيادة غيابهم +1 وإضافة 30 جنيه لكل غائب)\n` +
+                `• حاضرون بدون درجة واجب: ${pendingHw}\n\n` +
+                `هل تريد المتابعة؟`;
+
+    if (!confirm(msg)) return;
+
+    const now = Date.now();
+    list.forEach(s => {
+      if (!s.present) {
+        s.hw = 'absent';
+        s.absences = (Number(s.absences) || 0) + 1;
+        s.egp30 = (Number(s.egp30) || 0) + 30;
+        s.updatedAt = now;
+      }
+    });
+    db.sessionEnded[currentGroup] = true;
+    saveDB();
+    render();
+    showToast(`تم إنهاء حصة ${grpName} واحتساب الغياب`);
+  } else {
+    if (!confirm(`هل تريد إعادة فتح حصة (${grpName})؟\nسيتم التراجع عن احتساب الغياب التلقائي (خصم 1 غياب و 30 جنيه لمن سُجلوا غائبين).`)) return;
+    const now = Date.now();
+    list.forEach(s => {
+      if (!s.present && s.hw === 'absent') {
+        s.hw = '';
+        s.absences = Math.max(0, (Number(s.absences) || 0) - 1);
+        s.egp30 = Math.max(0, (Number(s.egp30) || 0) - 30);
+        s.updatedAt = now;
+      }
+    });
+    db.sessionEnded[currentGroup] = false;
+    saveDB();
+    render();
+    showToast(`تم إعادة فتح حصة ${grpName}`);
+  }
+}
+
+function openStudentModal(bn) {
+  editingStudentBn = bn;
+  const st = db[currentGroup].find(s => s.bn === bn);
+  if (!st) return;
+  document.getElementById('modalStudentTitle').textContent = `${st.bn}. ${st.name}`;
+  document.getElementById('editEgp').value = st.egp30 || 0;
+  document.getElementById('editAbsences').value = st.absences || 0;
+  document.getElementById('editComments').value = st.comments || '';
+  document.getElementById('editM5').value = st.m5 || '';
+  document.getElementById('editM6').value = st.m6 || '';
+  document.getElementById('editM7').value = st.m7 || '';
+  document.getElementById('editM8').value = st.m8 || '';
+  document.getElementById('editM9').value = st.m9 || '';
+  document.getElementById('editM10').value = st.m10 || '';
+  document.getElementById('editM11').value = st.m11 || '';
+  document.getElementById('studentModal').classList.add('open');
+}
+
+function payFullEgp() {
+  document.getElementById('editEgp').value = 0;
+  showToast('تم تصفير المبلغ — اضغط حفظ التعديلات');
+}
+
+function saveStudentDetails() {
+  const st = db[currentGroup].find(s => s.bn === editingStudentBn);
+  if (!st) return;
+  st.egp30 = Number(document.getElementById('editEgp').value) || 0;
+  st.absences = Number(document.getElementById('editAbsences').value) || 0;
+  st.comments = document.getElementById('editComments').value.trim();
+  st.m5 = document.getElementById('editM5').value.trim();
+  st.m6 = document.getElementById('editM6').value.trim();
+  st.m7 = document.getElementById('editM7').value.trim();
+  st.m8 = document.getElementById('editM8').value.trim();
+  st.m9 = document.getElementById('editM9').value.trim();
+  st.m10 = document.getElementById('editM10').value.trim();
+  st.m11 = document.getElementById('editM11').value.trim();
+  st.updatedAt = Date.now();
+  saveDB();
+  closeModal('studentModal');
+  render();
+  showToast('تم حفظ بيانات الطالب ✓');
+}
+
+/* ==================== MULTI-ASSISTANT MERGE SYSTEM ==================== */
+function openSyncModal() {
+  document.getElementById('pasteSyncInput').value = '';
+  document.getElementById('syncModal').classList.add('open');
+}
+
+function generateCompactPayload() {
+  // Pack only compact state so the WhatsApp message is short and clean
+  const packGroup = (arr) => arr.map(s => [
+    s.bn,
+    s.present ? 1 : 0,
+    s.hw || '',
+    s.egp30 || 0,
+    s.absences || 0,
+    s.comments || '',
+    s.m5 || '', s.m6 || '', s.m7 || '', s.m8 || '', s.m9 || '', s.m10 || '', s.m11 || '',
+    s.updatedAt || 0
+  ]);
+  const payloadObj = {
+    d: db.sessionDate,
+    e: db.sessionEnded,
+    b: packGroup(db.boys),
+    g: packGroup(db.girls)
+  };
+  const jsonStr = JSON.stringify(payloadObj);
+  // UTF-8 safe base64
+  const b64 = btoa(unescape(encodeURIComponent(jsonStr)));
+  return 'SYNC_V1:' + b64;
+}
+
+function copySyncCode() {
+  const code = generateCompactPayload();
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(code).then(() => {
+      showToast('تم نسخ كود التعديلات! الصقه في واتساب لزميلك ✓');
+    }).catch(() => fallbackCopy(code));
+  } else {
+    fallbackCopy(code);
+  }
+}
+
+function fallbackCopy(text) {
+  const ta = document.getElementById('pasteSyncInput');
+  ta.value = text;
+  let ok = false;
+  try {
+    ta.removeAttribute('readonly');
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length); // required on iOS Safari
+    ok = document.execCommand('copy');
+  } catch (e) { ok = false; }
+  showToast(ok
+    ? 'تم نسخ الكود ✓'
+    : 'اضغط مطولاً على الكود في المربع واختار نسخ (Copy)');
+}
+
+function shareSyncWhatsApp() {
+  const code = generateCompactPayload();
+  const url = 'https://wa.me/?text=' + encodeURIComponent(code);
+  window.open(url, '_blank');
+}
+
+function mergeSyncCode() {
+  let raw = document.getElementById('pasteSyncInput').value.trim();
+  if (!raw) {
+    showToast('من فضلك الصق الكود أولاً');
+    return;
+  }
+  const idx = raw.indexOf('SYNC_V1:');
+  if (idx === -1) {
+    alert('كود غير صحيح! تأكد إنك نسخت الرسالة كاملة وتبدأ بـ SYNC_V1:');
+    return;
+  }
+  try {
+    const b64 = raw.slice(idx + 8).trim();
+    const jsonStr = decodeURIComponent(escape(atob(b64)));
+    const incoming = JSON.parse(jsonStr);
+
+    let mergedChanges = 0;
+
+    const mergeGroup = (localArr, incArr) => {
+      if (!Array.isArray(incArr)) return;
+      incArr.forEach(item => {
+        const [bn, pres, hw, egp, abs, cmt, m5, m6, m7, m8, m9, m10, m11, incTime] = item;
+        const localSt = localArr.find(s => s.bn === bn);
+        if (!localSt) return;
+
+        let changed = false;
+
+        // 1. Presence: OR logic (if either assistant marked present, keep present)
+        if (pres === 1 && !localSt.present) {
+          localSt.present = true;
+          if (localSt.hw === 'absent') localSt.hw = '';
+          changed = true;
+        }
+
+        // 2. Homework: if local is empty and incoming has grade, take incoming.
+        // If both have values, take whichever was edited more recently!
+        if (hw && hw !== localSt.hw) {
+          if (!localSt.hw || (localSt.hw === 'absent' && hw !== 'absent') || (incTime > (localSt.updatedAt || 0))) {
+            localSt.hw = hw;
+            if (hw === 'absent') {
+              localSt.present = false;
+            } else {
+              localSt.present = true;
+            }
+            changed = true;
+          }
+        }
+
+        // 3. Comments: combine if different and non-empty
+        if (cmt && cmt !== localSt.comments) {
+          if (!localSt.comments) {
+            localSt.comments = cmt;
+          } else if (!localSt.comments.includes(cmt)) {
+            localSt.comments = localSt.comments + ' | ' + cmt;
+          }
+          changed = true;
+        }
+
+        // 4. Other fields (30 EGP, Absences, Tests): take latest edit if incoming is newer
+        if (incTime > (localSt.updatedAt || 0)) {
+          if (egp !== localSt.egp30) { localSt.egp30 = egp; changed = true; }
+          if (abs !== localSt.absences) { localSt.absences = abs; changed = true; }
+          const tests = [m5, m6, m7, m8, m9, m10, m11];
+          ['m5','m6','m7','m8','m9','m10','m11'].forEach((k, i) => {
+            if (tests[i] && tests[i] !== localSt[k]) {
+              localSt[k] = tests[i];
+              changed = true;
+            }
+          });
+          localSt.updatedAt = incTime;
+        }
+
+        if (changed) mergedChanges++;
+      });
+    };
+
+    mergeGroup(db.boys, incoming.b);
+    mergeGroup(db.girls, incoming.g);
+
+    saveDB();
+    closeModal('syncModal');
+    render();
+    showToast(`تم الدمج بنجاح! تم تحديث بيانات ${mergedChanges} طالب/طالبة ✓`);
+  } catch (err) {
+    console.error(err);
+    alert('حدث خطأ أثناء قراءة الكود. تأكد من نسخ الكود بالكامل بدون نقص أي حرف.');
+  }
+}
+
+/* ==================== EXACT TEMPLATE EXCEL EXPORT (ExcelJS) ==================== */
+function b64ToArrayBuffer(base64) {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
+async function exportFormattedExcel(targetGroup) {
+  if (currentRole !== 'admin') {
+    showToast('تصدير ملفات Excel متاح للمدير فقط');
+    return;
+  }
+  const grp = targetGroup || currentGroup;
+  if (typeof ExcelJS === 'undefined') {
+    alert('مكتبة التصدير تحتاج اتصال إنترنت لتحميلها أول مرة.');
+    return;
+  }
+
+  try {
+    showToast('جاري تجهيز الملف بنفس التنسيق الأصلي...');
+    const isBoys = grp === 'boys';
+    const b64 = isBoys ? TEMPLATE_BOYS_B64 : TEMPLATE_GIRLS_B64;
+    const sheetName = isBoys ? 'Boys' : 'Girls';
+
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(b64ToArrayBuffer(b64));
+    const worksheet = workbook.getWorksheet(sheetName);
+
+    // Update Session Date in D2: `( 18 /  11  / 2026 )`
+    worksheet.getCell('D2').value = `( ${db.sessionDate} )`;
+
+    // Update each student row directly in place so every cell style, border, font, merge & height stays 100% identical!
+    db[grp].forEach(s => {
+      const r = s.row;
+      // Col C (3): 30 EGP
+      worksheet.getCell(r, 3).value = s.egp30 > 0 ? Number(s.egp30) : null;
+      // Col D (4): ~ ( H.W ) ~
+      worksheet.getCell(r, 4).value = s.hw ? s.hw : null;
+      // Cols E..K (5..11): M-(5) .. M-(11)
+      const mVals = [s.m5, s.m6, s.m7, s.m8, s.m9, s.m10, s.m11];
+      mVals.forEach((val, idx) => {
+        if (val === '' || val === null || val === undefined) {
+          worksheet.getCell(r, 5 + idx).value = null;
+        } else {
+          const num = Number(val);
+          worksheet.getCell(r, 5 + idx).value = (!isNaN(num) && val.trim() !== '') ? num : val;
+        }
+      });
+      // Col L (12): Comments !!
+      worksheet.getCell(r, 12).value = s.comments ? s.comments : null;
+      // Col M (13): Absences
+      worksheet.getCell(r, 13).value = s.absences > 0 ? Number(s.absences) : null;
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const safeDate = db.sessionDate.replace(/[\/\s]+/g, '-');
+    const fileName = isBoys
+      ? `3rd_Secondary (Boys) ${safeDate}.xlsx`
+      : `3rd_Secondary (Girls) ${safeDate}.xlsx`;
+
+    // On iPhone/iPad, the share sheet gives "Save to Files" which is the most reliable way to keep the xlsx
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    let shared = false;
+    if (isIOS && navigator.canShare && navigator.share) {
+      try {
+        const file = new File([blob], fileName, { type: blob.type });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: fileName });
+          shared = true;
+        }
+      } catch (err) {
+        if (err && err.name === 'AbortError') shared = true; // user closed the sheet
+      }
+    }
+
+    if (!shared) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      // Don't revoke immediately: Safari/Chrome on mobile may not have started the download yet
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    }
+    showToast(`تم تحميل ${fileName} بنفس التنسيق الأصلي ✓`);
+  } catch (e) {
+    console.error(e);
+    alert('حدث خطأ أثناء تصدير الملف: ' + e.message);
+  }
+}
+
+/* ==================== TOOLS & RENDERING ==================== */
+function openToolsModal() {
+  document.getElementById('toolsModal').classList.add('open');
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+function closeModalOnBg(e, id) {
+  if (e.target.id === id) closeModal(id);
+}
+
+function startNewSession() {
+  if (!confirm('هل تريد بدء حصة جديدة؟\nسيتم الاحتفاظ برصيد الغياب التراكمي والغرامات (30 EGP) والدرجات والتعليقات، وتصفير علامات حضور وواجب الحصة الحالية فقط.')) return;
+  ['boys', 'girls'].forEach(g => {
+    db[g].forEach(s => {
+      s.present = false;
+      s.hw = '';
+      s.updatedAt = Date.now();
+    });
+    db.sessionEnded[g] = false;
+  });
+  saveDB();
+  closeModal('toolsModal');
+  render();
+  showToast('تم تجهيز حصة جديدة ✓');
+}
+
+function resetAllData() {
+  if (!confirm('تحذير: سيتم مسح كل التعديلات والعودة للبيانات الأصلية المرفقة. هل أنت متأكد؟')) return;
+  localStorage.removeItem(STORAGE_KEY);
+  db = JSON.parse(JSON.stringify(DEFAULT_DB));
+  closeModal('toolsModal');
+  render();
+  showToast('تمت استعادة البيانات الأصلية');
+}
+
+function renderStats() {
+  const list = db[currentGroup];
+  const total = list.length;
+  const present = list.filter(s => s.present).length;
+  const absent = total - present;
+  const nohw = list.filter(s => s.hw === 'nohw').length;
+
+  document.getElementById('count-boys').textContent = db.boys.length;
+  document.getElementById('count-girls').textContent = db.girls.length;
+  document.getElementById('stat-total').textContent = total;
+  document.getElementById('stat-present').textContent = present;
+  document.getElementById('stat-absent').textContent = absent;
+  document.getElementById('stat-nohw').textContent = nohw;
+
+  const isEnded = db.sessionEnded[currentGroup];
+  const endBtn = document.getElementById('endSessionBtn');
+  const statusTxt = document.getElementById('sessionStatusText');
+  if (isEnded) {
+    endBtn.textContent = 'إعادة فتح الحصة ↺';
+    endBtn.classList.add('ended');
+    statusTxt.textContent = 'الحصة منتهية • تم احتساب الغياب والغرامات';
+  } else {
+    endBtn.textContent = 'إنهاء الحصة واحتساب الغياب';
+    endBtn.classList.remove('ended');
+    statusTxt.textContent = currentRole === 'admin'
+      ? 'وضع المدير • تصدير القالب الأصلي + حفظ تلقائي'
+      : 'وضع المساعد • حفظ تلقائي على الجهاز ✓';
+  }
+}
+
+function renderList() {
+  const container = document.getElementById('studentList');
+  const list = db[currentGroup];
+  const presets = ['100%', '90%', '80%', '70%', '60%', '50%'];
+
+  const filtered = list.filter(s => {
+    if (searchQuery) {
+      const matchName = s.name.toLowerCase().includes(searchQuery);
+      const matchBn = String(s.bn) === searchQuery;
+      if (!matchName && !matchBn) return false;
+    }
+    if (currentFilter === 'present') return s.present;
+    if (currentFilter === 'unmarked') return !s.present;
+    if (currentFilter === 'nohw') return s.hw === 'nohw';
+    if (currentFilter === 'pending_hw') return s.present && !s.hw;
+    if (currentFilter === 'egp') return s.egp30 > 0;
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    container.innerHTML = `<div style="text-align:center; padding:30px; color:var(--muted); font-weight:600;">لا يوجد طلاب مطابقون للبحث</div>`;
+    return;
+  }
+
+  container.innerHTML = filtered.map(s => {
+    const isCustomHw = s.hw && !presets.includes(s.hw) && s.hw !== 'nohw' && s.hw !== 'absent';
+    const cardClass = s.present ? 'card is-present' : (s.hw === 'absent' ? 'card is-absent' : 'card');
+
+    return `
+      <div class="${cardClass}">
+        <div class="card-top">
+          <div class="student-info" onclick="openStudentModal(${s.bn})">
+            <div class="bn-badge">${s.bn}</div>
+            <div class="st-name">${s.name}</div>
+          </div>
+          <button class="attend-btn ${s.present ? 'checked' : ''}" onclick="togglePresence(${s.bn})">
+            ${s.present ? '✓ حاضر' : 'تسجيل حضور'}
+          </button>
+        </div>
+
+        <div class="meta-row" onclick="openStudentModal(${s.bn})">
+          <span class="badge badge-abs ${s.absences >= 2 ? 'high' : ''}">غياب: ${s.absences}</span>
+          <span class="badge badge-egp ${s.egp30 === 0 ? 'zero' : ''}">30 EGP: ${s.egp30} ج</span>
+          ${s.comments ? `<span class="badge badge-cmt">💬 ${s.comments}</span>` : ''}
+          <span class="badge badge-more">تعديل / درجات ✎</span>
+        </div>
+
+        <div class="hw-row">
+          <span class="hw-label">HW:</span>
+          <button class="hw-btn absent-btn ${s.hw === 'absent' ? 'selected' : ''}" onclick="setHw(${s.bn}, 'absent')">absent</button>
+          <button class="hw-btn nohw ${s.hw === 'nohw' ? 'selected' : ''}" onclick="setHw(${s.bn}, 'nohw')">No HW</button>
+          ${presets.map(p => `
+            <button class="hw-btn ${s.hw === p ? 'selected' : ''}" onclick="setHw(${s.bn}, '${p}')">${p}</button>
+          `).join('')}
+          <input type="text" class="hw-custom" placeholder="نسبة" value="${isCustomHw ? s.hw : ''}" onchange="setCustomHw(${s.bn}, this)" />
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function render() {
+  document.getElementById('sessionDateInput').value = db.sessionDate;
+  renderStats();
+  renderList();
+}
+
+applyRoleUI();
+render();
+</script>
+</body>
+</html>
