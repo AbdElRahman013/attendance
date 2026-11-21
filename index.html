@@ -470,6 +470,25 @@
   <button class="btn-menu" onclick="openToolsModal()">⋮</button>
 </div>
 
+<!-- New session (date) -->
+<div class="modal-backdrop" id="newSessionModal" onclick="closeModalOnBg(event, 'newSessionModal')">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header">
+      <h3 class="modal-title">➕ بدء حصة جديدة</h3>
+      <button class="close-btn" onclick="closeModal('newSessionModal')">إلغاء</button>
+    </div>
+    <div class="field-group">
+      <label class="field-label" for="newSessionDate">تاريخ الحصة الجديدة</label>
+      <input type="date" class="field-input" id="newSessionDate" style="width:100%;direction:ltr;text-align:center" />
+    </div>
+    <div id="newSessionWarn" style="color:#b45309;font-size:12px;font-weight:700;line-height:1.7;margin-bottom:8px"></div>
+    <div style="font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:10px">
+      هيتصفّر حضور وواجب الحصة بس. الغياب والفلوس (30 EGP) والدرجات والتعليقات بتكمّل من الحصة اللي قبلها.
+    </div>
+    <button class="btn-save" onclick="confirmNewSession()">بدء الحصة</button>
+  </div>
+</div>
+
 <!-- Access code (login) -->
 <div class="modal-backdrop" id="loginModal">
   <div class="modal" style="max-width:380px">
@@ -618,7 +637,7 @@
       <button class="btn-export admin-only" onclick="exportFormattedExcel('boys')">تحميل شيت الأولاد بالتنسيق الأصلي (Boys.xlsx)</button>
       <button class="btn-export admin-only" onclick="exportFormattedExcel('girls')">تحميل شيت البنات بالتنسيق الأصلي (Girls.xlsx)</button>
       <button class="btn-purple" onclick="closeModal('toolsModal'); openSyncModal();">⇄ دمج ومشاركة التعديلات مع باقي المساعدين</button>
-      <button class="btn-save" style="background:#0284c7;" onclick="startNewSession()">بدء حصة جديدة (تصفير الحضور والواجب فقط)</button>
+      <button class="btn-save admin-only" style="background:#0284c7;" onclick="startNewSession()">بدء حصة جديدة (تصفير الحضور والواجب فقط)</button>
       <button class="btn-end admin-only" style="background:#475569;" onclick="resetAllData()">تحميل آخر نسخة من السيرفر (تجاهل تعديلات الجهاز)</button>
     </div>
   </div>
@@ -700,6 +719,8 @@ function applyRoleUI() {
   document.body.classList.toggle('role-assistant', currentRole === 'assistant');
   const sel = document.getElementById('roleSelect');
   if (sel) sel.value = currentRole;
+  const di = document.getElementById('sessionDateInput');
+  if (di) di.disabled = currentRole !== 'admin'; // تاريخ الحصة للمدير بس
   renderStats();
 }
 
@@ -733,6 +754,7 @@ function showToast(msg) {
 }
 
 function updateDate(val) {
+  if (currentRole !== 'admin') { render(); return; }
   db.sessionDate = val;
   saveDB();
 }
@@ -1456,6 +1478,11 @@ async function buildExcelBlob(grp) {
   let xml = await zip.file(sheetPath).async('string');
 
   xml = patchCell(xml, 'D2', `( ${db.sessionDate} )`);
+  const dm = /(\d{1,2})\s*\/\s*(\d{1,2})\s*\/\s*(\d{4})/.exec(db.sessionDate || '');
+  if (dm) {
+    const wd = new Date(Date.UTC(+dm[3], +dm[2] - 1, +dm[1])).getUTCDay();
+    xml = patchCell(xml, 'M2', ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][wd]);
+  }
   db[grp].forEach(st => {
     const r = st.row;
     xml = patchCell(xml, 'A' + r, st.bn);
@@ -1703,12 +1730,34 @@ function closeModalOnBg(e, id) {
   if (e.target.id === id) closeModal(id);
 }
 
+function pad2(n) { return String(n).padStart(2, '0'); }
+
 function startNewSession() {
   if (currentRole !== 'admin') {
     showToast('هذه الصلاحية متاحة للمدير فقط');
     return;
   }
-  if (!confirm('هل تريد بدء حصة جديدة؟\nسيتم الاحتفاظ برصيد الغياب التراكمي والغرامات (30 EGP) والدرجات والتعليقات، وتصفير علامات حضور وواجب الحصة الحالية فقط.')) return;
+  closeModal('toolsModal');
+  const d = new Date();
+  document.getElementById('newSessionDate').value = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+  const notEnded = [];
+  if (!db.sessionEnded.boys) notEnded.push('الأولاد');
+  if (!db.sessionEnded.girls) notEnded.push('البنات');
+  document.getElementById('newSessionWarn').innerHTML = notEnded.length
+    ? '⚠️ حصة <b>' + notEnded.join(' و ') + '</b> الحالية لسه ماتنهتش، يعني الغياب مش هيتحسب على اللي ماتعلّموش absent. أنهِها الأول لو عايز تحسب الغياب.'
+    : '';
+  document.getElementById('newSessionModal').classList.add('open');
+}
+
+function confirmNewSession() {
+  if (currentRole !== 'admin') return;
+  const v = document.getElementById('newSessionDate').value;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+  if (!m) { showToast('اختار تاريخ الحصة الجديدة'); return; }
+  const dateText = m[3] + ' / ' + m[2] + ' / ' + m[1];
+  if (dateText.replace(/\s/g, '') === String(db.sessionDate).replace(/\s/g, '')) {
+    if (!confirm('نفس تاريخ الحصة الحالية (' + dateText + '). هل تريد المتابعة؟')) return;
+  }
   ['boys', 'girls'].forEach(g => {
     db[g].forEach(s => {
       s.present = false;
@@ -1718,10 +1767,11 @@ function startNewSession() {
     });
     db.sessionEnded[g] = false;
   });
+  db.sessionDate = dateText;
   saveDB();
-  closeModal('toolsModal');
+  closeModal('newSessionModal');
   render();
-  showToast('تم تجهيز حصة جديدة ✓');
+  showToast('تم تجهيز حصة جديدة بتاريخ ' + dateText + ' ✓');
 }
 
 async function resetAllData() {
