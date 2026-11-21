@@ -446,6 +446,9 @@
 <div style="padding:0 12px 8px">
   <button class="btn-purple" style="width:100%" onclick="openExamStats()">📊 إحصائية درجات الامتحانات</button>
 </div>
+<div class="admin-only" style="padding:0 12px 8px">
+  <button class="btn-purple" style="width:100%;background:#0f766e" onclick="openHistory()">🗂 الحصص السابقة</button>
+</div>
 
 <div class="controls">
   <div class="search-wrap">
@@ -472,20 +475,32 @@
 
 <!-- New session (date) -->
 <div class="modal-backdrop" id="newSessionModal" onclick="closeModalOnBg(event, 'newSessionModal')">
-  <div class="modal" style="max-width:400px">
+  <div class="modal" style="max-width:420px">
     <div class="modal-header">
-      <h3 class="modal-title">➕ بدء حصة جديدة</h3>
-      <button class="close-btn" onclick="closeModal('newSessionModal')">إلغاء</button>
+      <h3 class="modal-title" id="nsTitle">➕ بدء حصة جديدة</h3>
+      <button class="close-btn" onclick="closeModal('newSessionModal')">لاحقاً</button>
     </div>
-    <div class="field-group">
-      <label class="field-label" for="newSessionDate">تاريخ الحصة الجديدة</label>
-      <input type="date" class="field-input" id="newSessionDate" style="width:100%;direction:ltr;text-align:center" />
-    </div>
+    <div id="nsIntro" style="font-size:13px;line-height:1.8;margin-bottom:8px"></div>
+    <div class="field-label">الحصة القادمة</div>
+    <div id="nsChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px"></div>
+    <label class="field-label" for="newSessionDate">أو اختار تاريخ تاني</label>
+    <input type="date" class="field-input" id="newSessionDate" onchange="nsDateChanged()" style="width:100%;direction:ltr;text-align:center;margin-bottom:8px" />
     <div id="newSessionWarn" style="color:#b45309;font-size:12px;font-weight:700;line-height:1.7;margin-bottom:8px"></div>
     <div style="font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:10px">
-      هيتصفّر حضور وواجب الحصة بس. الغياب والفلوس (30 EGP) والدرجات والتعليقات بتكمّل من الحصة اللي قبلها.
+      هيتفتح شيت جديد متصفّر (الحضور والواجب بس). الغياب والفلوس (30 EGP) والدرجات والتعليقات بتكمّل من الحصة اللي قبلها، والحصة الحالية بتتحفظ في "الحصص السابقة".
     </div>
-    <button class="btn-save" onclick="confirmNewSession()">بدء الحصة</button>
+    <button class="btn-save" onclick="confirmNewSession()">✓ تأكيد وفتح الحصة الجديدة</button>
+  </div>
+</div>
+
+<!-- Past sessions -->
+<div class="modal-backdrop" id="historyModal" onclick="closeModalOnBg(event, 'historyModal')">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 class="modal-title">🗂 الحصص السابقة</h3>
+      <button class="close-btn" onclick="closeModal('historyModal')">إغلاق</button>
+    </div>
+    <div id="historyBody"></div>
   </div>
 </div>
 
@@ -636,7 +651,6 @@
     <div style="display:flex; flex-direction:column; gap:10px; margin-top:12px;">
       <button class="btn-export admin-only" onclick="exportFormattedExcel('boys')">تحميل شيت الأولاد بالتنسيق الأصلي (Boys.xlsx)</button>
       <button class="btn-export admin-only" onclick="exportFormattedExcel('girls')">تحميل شيت البنات بالتنسيق الأصلي (Girls.xlsx)</button>
-      <button class="btn-purple" onclick="closeModal('toolsModal'); openSyncModal();">⇄ دمج ومشاركة التعديلات مع باقي المساعدين</button>
       <button class="btn-save admin-only" style="background:#0284c7;" onclick="startNewSession()">بدء حصة جديدة (تصفير الحضور والواجب فقط)</button>
       <button class="btn-end admin-only" style="background:#475569;" onclick="resetAllData()">تحميل آخر نسخة من السيرفر (تجاهل تعديلات الجهاز)</button>
     </div>
@@ -733,6 +747,8 @@ function changeRole(newRole) {
   } else {
     currentRole = 'assistant';
     cloud.adminCode = '';
+    closeModal('historyModal');
+    hist.cur = null; hist.list = [];
     try { sessionStorage.removeItem(ADMIN_SESSION_KEY); } catch (e) {}
     applyRoleUI();
     renderStats();
@@ -893,12 +909,19 @@ function toggleEndSession() {
       }
     });
     db.sessionEnded[currentGroup] = true;
+    queueSnapshot();
     saveDB();
     render();
     showToast(`تم إنهاء حصة ${grpName} واحتساب الغياب`);
+    if (db.sessionEnded.boys && db.sessionEnded.girls) {
+      setTimeout(() => openNextSessionModal(true), 400);
+    } else {
+      setTimeout(() => showToast('لسه حصة ' + (currentGroup === 'boys' ? 'البنات' : 'الأولاد') + ' ماتنهتش. أنهيها وبعدين تفتح الحصة القادمة'), 2600);
+    }
   } else {
     if (!confirm(`هل تريد إعادة فتح حصة (${grpName})؟\nالغائبون هيفضلوا غائبين ومحسوب عليهم (+1 و 30 جنيه). لو حد حضر فعلاً علّمه حاضر وهيتم خصم الغياب والـ 30 تلقائياً.`)) return;
     db.sessionEnded[currentGroup] = false;
+    queueSnapshot();
     saveDB();
     render();
     showToast(`تم إعادة فتح حصة ${grpName}`);
@@ -1116,7 +1139,7 @@ const CACHE_KEY = 'magdy_cloud_cache_v1';
 const POLL_MS = 6000;
 
 const cloud = { code: '', adminCode: '', since: null, pushed: {}, metaPushed: {}, loaded: false,
-                label: 'جاري التحميل...', pushTimer: null, pushing: false, again: false, pollTimer: null };
+                label: 'جاري التحميل...', snaps: [], pushTimer: null, pushing: false, again: false, pollTimer: null };
 
 async function rpc(fn, args) {
   const ctl = new AbortController();
@@ -1178,7 +1201,7 @@ function setSyncLabel(txt) {
 
 function cacheDB() {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ db, pushed: cloud.pushed, metaPushed: cloud.metaPushed, since: cloud.since }));
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ db, pushed: cloud.pushed, metaPushed: cloud.metaPushed, since: cloud.since, snaps: cloud.snaps }));
   } catch (e) {}
 }
 
@@ -1238,6 +1261,7 @@ function hasPending() {
   for (const g of ['boys', 'girls']) {
     for (const s of db[g]) if (stable(s) !== cloud.pushed[keyOf(g, s.row)]) return true;
   }
+  if (cloud.adminCode && cloud.snaps.length > 0) return true;
   return META_KEYS.some(k => stable(metaGet(k)) !== cloud.metaPushed[k]);
 }
 
@@ -1291,6 +1315,13 @@ async function pushChanges() {
           if (e.adminOnly) { /* المساعد مش مسموح له: هيرجع للقيمة اللي على السيرفر مع التحديث الجاي */ delete cloud.metaPushed[k]; }
           else throw e;
         }
+      }
+    }
+    // نسخ الحصص المنتهية (للمدير بس)
+    if (cloud.adminCode && cloud.snaps.length) {
+      for (const snap of cloud.snaps.slice()) {
+        await rpc('app_save_session', { p_code: cloud.adminCode, p_date: snap.date, p_boys: snap.boys, p_girls: snap.girls, p_ended: snap.ended });
+        cloud.snaps = cloud.snaps.filter(x => x !== snap);
       }
     }
     cacheDB();
@@ -1355,6 +1386,7 @@ async function bootstrapCloud() {
   try {
     const st = await rpc('app_get_state', { p_code: code, p_since: null });
     cloud.code = code;
+    try { const c0 = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); cloud.snaps = (c0 && c0.snaps) || []; } catch (x) { cloud.snaps = []; }
     setupFromState(st);
     cloud.loaded = true;
     cacheDB();
@@ -1379,7 +1411,7 @@ async function bootstrapCloud() {
     let c = null;
     try { c = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); } catch (x) {}
     if (c && c.db) {
-      db = c.db; cloud.pushed = c.pushed || {}; cloud.metaPushed = c.metaPushed || {}; cloud.since = c.since;
+      db = c.db; cloud.pushed = c.pushed || {}; cloud.metaPushed = c.metaPushed || {}; cloud.since = c.since; cloud.snaps = c.snaps || [];
       cloud.code = code; cloud.loaded = true;
       setSyncLabel('غير متصل ⚠ شغال على آخر نسخة محفوظة على الجهاز');
       render();
@@ -1470,20 +1502,21 @@ function parseCellInput(val) {
 }
 
 // أعمدة القالب: C=30 EGP | D=H.W | E..L = M-(5)..M-(12) | M=Comments | N=Absences
-async function buildExcelBlob(grp) {
+async function buildExcelBlob(grp, src) {
+  src = src || db;
   const isBoys = grp === 'boys';
   const b64 = isBoys ? TEMPLATE_BOYS_B64 : TEMPLATE_GIRLS_B64;
   const zip = await JSZip.loadAsync(b64, { base64: true });
   const sheetPath = Object.keys(zip.files).find(n => /^xl\/worksheets\/sheet\d+\.xml$/.test(n));
   let xml = await zip.file(sheetPath).async('string');
 
-  xml = patchCell(xml, 'D2', `( ${db.sessionDate} )`);
-  const dm = /(\d{1,2})\s*\/\s*(\d{1,2})\s*\/\s*(\d{4})/.exec(db.sessionDate || '');
+  xml = patchCell(xml, 'D2', `( ${src.sessionDate} )`);
+  const dm = /(\d{1,2})\s*\/\s*(\d{1,2})\s*\/\s*(\d{4})/.exec(src.sessionDate || '');
   if (dm) {
     const wd = new Date(Date.UTC(+dm[3], +dm[2] - 1, +dm[1])).getUTCDay();
     xml = patchCell(xml, 'M2', ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][wd]);
   }
-  db[grp].forEach(st => {
+  src[grp].forEach(st => {
     const r = st.row;
     xml = patchCell(xml, 'A' + r, st.bn);
     xml = patchCell(xml, 'B' + r, st.name);
@@ -1506,11 +1539,14 @@ async function buildExcelBlob(grp) {
 }
 
 async function exportFormattedExcel(targetGroup) {
+  return exportSession(targetGroup || currentGroup, db);
+}
+
+async function exportSession(grp, src) {
   if (currentRole !== 'admin') {
     showToast('تصدير ملفات Excel متاح للمدير فقط');
     return;
   }
-  const grp = targetGroup || currentGroup;
   if (typeof JSZip === 'undefined') {
     showToast('جاري تحميل مكتبة التصدير...');
     try {
@@ -1524,8 +1560,8 @@ async function exportFormattedExcel(targetGroup) {
   try {
     showToast('جاري تجهيز الملف بنفس التنسيق الأصلي...');
     const isBoys = grp === 'boys';
-    const blob = await buildExcelBlob(grp);
-    const safeDate = db.sessionDate.replace(/[\/\s]+/g, '-');
+    const blob = await buildExcelBlob(grp, src);
+    const safeDate = String(src.sessionDate).replace(/[\/\s]+/g, '-');
     const fileName = isBoys
       ? `3rd_Secondary (Boys) ${safeDate}.xlsx`
       : `3rd_Secondary (Girls) ${safeDate}.xlsx`;
@@ -1731,15 +1767,74 @@ function closeModalOnBg(e, id) {
 }
 
 function pad2(n) { return String(n).padStart(2, '0'); }
+const SESSION_DAYS = [0, 3]; // أيام الحصص: 0 = الأحد، 3 = الأربع (لتغييرها غيّر الأرقام هنا)
+const AR_DAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 
-function startNewSession() {
+function parseSessionDate(txt) {
+  const m = /(\d{1,2})\s*\/\s*(\d{1,2})\s*\/\s*(\d{4})/.exec(String(txt || ''));
+  return m ? new Date(Date.UTC(+m[3], +m[2] - 1, +m[1])) : null;
+}
+function fmtDate(d) { return pad2(d.getUTCDate()) + ' / ' + pad2(d.getUTCMonth() + 1) + ' / ' + d.getUTCFullYear(); }
+function isoDate(d) { return d.getUTCFullYear() + '-' + pad2(d.getUTCMonth() + 1) + '-' + pad2(d.getUTCDate()); }
+function normDate(txt) { const d = parseSessionDate(txt); return d ? fmtDate(d) : String(txt || '').trim(); }
+
+// الحصص القادمة: أول يومين حصة (أحد/أربع) بعد الحصة الحالية، ومن النهارده فصاعداً
+function nextSessionDates(n) {
+  const now = new Date();
+  const today = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+  const cur = parseSessionDate(db.sessionDate);
+  let d = (cur && cur >= today) ? cur : new Date(today.getTime() - 86400000);
+  const out = [];
+  for (let guard = 0; out.length < n && guard < 60; guard++) {
+    d = new Date(d.getTime() + 86400000);
+    if (SESSION_DAYS.indexOf(d.getUTCDay()) >= 0) out.push(d);
+  }
+  return out;
+}
+
+// نسخة من الحصة الحالية بتتحفظ على السيرفر (أرشيف الحصص السابقة)
+function queueSnapshot() {
+  const date = normDate(db.sessionDate);
+  const snap = {
+    date,
+    boys: JSON.parse(JSON.stringify(db.boys)),
+    girls: JSON.parse(JSON.stringify(db.girls)),
+    ended: { boys: !!db.sessionEnded.boys, girls: !!db.sessionEnded.girls }
+  };
+  cloud.snaps = cloud.snaps.filter(x => x.date !== date);
+  cloud.snaps.push(snap);
+}
+
+function pickNextDate(iso) {
+  document.getElementById('newSessionDate').value = iso;
+  nsDateChanged();
+}
+function nsDateChanged() {
+  const v = document.getElementById('newSessionDate').value;
+  document.querySelectorAll('#nsChips button').forEach(b => {
+    const on = b.getAttribute('data-iso') === v;
+    b.style.background = on ? '#2563eb' : '#fff';
+    b.style.color = on ? '#fff' : '#1e293b';
+  });
+}
+
+function openNextSessionModal(afterEnd) {
   if (currentRole !== 'admin') {
     showToast('هذه الصلاحية متاحة للمدير فقط');
     return;
   }
   closeModal('toolsModal');
-  const d = new Date();
-  document.getElementById('newSessionDate').value = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+  document.getElementById('nsTitle').textContent = afterEnd ? '✅ تم إنهاء الحصة' : '➕ بدء حصة جديدة';
+  document.getElementById('nsIntro').innerHTML = afterEnd
+    ? 'الحصة اتحفظت في "الحصص السابقة". تحب تنتقل للحصة القادمة؟'
+    : 'اختار تاريخ الحصة الجديدة.';
+  const nexts = nextSessionDates(2);
+  document.getElementById('nsChips').innerHTML = nexts.map(d =>
+    '<button type="button" data-iso="' + isoDate(d) + '" onclick="pickNextDate(\'' + isoDate(d) + '\')" ' +
+    'style="border:1.5px solid #2563eb;border-radius:10px;padding:8px 12px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit">' +
+    AR_DAYS[d.getUTCDay()] + ' ' + fmtDate(d) + '</button>').join('');
+  document.getElementById('newSessionDate').value = isoDate(nexts[0]);
+  nsDateChanged();
   const notEnded = [];
   if (!db.sessionEnded.boys) notEnded.push('الأولاد');
   if (!db.sessionEnded.girls) notEnded.push('البنات');
@@ -1749,15 +1844,18 @@ function startNewSession() {
   document.getElementById('newSessionModal').classList.add('open');
 }
 
+function startNewSession() { openNextSessionModal(false); }
+
 function confirmNewSession() {
   if (currentRole !== 'admin') return;
   const v = document.getElementById('newSessionDate').value;
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
   if (!m) { showToast('اختار تاريخ الحصة الجديدة'); return; }
   const dateText = m[3] + ' / ' + m[2] + ' / ' + m[1];
-  if (dateText.replace(/\s/g, '') === String(db.sessionDate).replace(/\s/g, '')) {
+  if (dateText === normDate(db.sessionDate)) {
     if (!confirm('نفس تاريخ الحصة الحالية (' + dateText + '). هل تريد المتابعة؟')) return;
   }
+  queueSnapshot(); // نحفظ الحصة اللي بتخلص قبل التصفير
   ['boys', 'girls'].forEach(g => {
     db[g].forEach(s => {
       s.present = false;
@@ -1771,7 +1869,132 @@ function confirmNewSession() {
   saveDB();
   closeModal('newSessionModal');
   render();
-  showToast('تم تجهيز حصة جديدة بتاريخ ' + dateText + ' ✓');
+  showToast('تم فتح حصة جديدة بتاريخ ' + dateText + ' ✓');
+}
+
+/* ==================== PAST SESSIONS ==================== */
+let hist = { list: [], cur: null, group: 'boys', search: '' };
+
+function fmtDateTime(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleString('ar-EG', { day: 'numeric', month: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+function weekdayAr(dateText) {
+  const d = parseSessionDate(dateText);
+  return d ? AR_DAYS[d.getUTCDay()] : '';
+}
+
+async function openHistory() {
+  if (currentRole !== 'admin') { showToast('الحصص السابقة متاحة للمدير فقط'); return; }
+  document.getElementById('historyModal').classList.add('open');
+  hist.cur = null;
+  document.getElementById('historyBody').innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted)">جاري التحميل...</div>';
+  try {
+    hist.list = await rpc('app_list_sessions', { p_code: cloud.adminCode });
+    renderHistoryList();
+  } catch (e) {
+    document.getElementById('historyBody').innerHTML = '<div style="padding:20px;text-align:center;color:var(--red)">تعذر تحميل الحصص. اتأكد من النت وحاول تاني.</div>';
+  }
+}
+
+function renderHistoryList() {
+  const el = document.getElementById('historyBody');
+  if (!hist.list.length) {
+    el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted);line-height:1.8">مفيش حصص محفوظة لسه.<br>الحصة بتتحفظ تلقائياً لما المدير ينهيها أو يفتح حصة جديدة.</div>';
+    return;
+  }
+  el.innerHTML = hist.list.map(x => {
+    const wd = weekdayAr(x.session_date);
+    const done = x.ended && x.ended.boys && x.ended.girls;
+    return `<div onclick="openHistorySession(${x.id})" style="border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:8px;cursor:pointer;background:#fff">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <b style="font-size:14px">${escHtml(wd)} ${escHtml(x.session_date)}</b>
+        <span style="font-size:11px;color:${done ? '#16a34a' : '#d97706'};font-weight:700">${done ? 'منتهية ✓' : 'غير مكتملة'}</span>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px;line-height:1.7">
+        الأولاد: حاضر <b>${x.boys_present}</b> • غايب <b>${x.boys_absent}</b> (من ${x.boys_total})<br>
+        البنات: حاضر <b>${x.girls_present}</b> • غايب <b>${x.girls_absent}</b> (من ${x.girls_total})
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function openHistorySession(id) {
+  document.getElementById('historyBody').innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted)">جاري التحميل...</div>';
+  try {
+    hist.cur = await rpc('app_get_session', { p_code: cloud.adminCode, p_id: id });
+    hist.group = 'boys';
+    hist.search = '';
+    renderHistoryDetail();
+  } catch (e) {
+    document.getElementById('historyBody').innerHTML = '<div style="padding:20px;text-align:center;color:var(--red)">تعذر تحميل الحصة.</div>';
+  }
+}
+
+function histBack() {
+  hist.cur = null;
+  renderHistoryList();
+}
+function histSetGroup(g) {
+  hist.group = g;
+  document.getElementById('hgBoys').style.background = g === 'boys' ? '#0f766e' : '#fff';
+  document.getElementById('hgBoys').style.color = g === 'boys' ? '#fff' : '#0f766e';
+  document.getElementById('hgGirls').style.background = g === 'girls' ? '#0f766e' : '#fff';
+  document.getElementById('hgGirls').style.color = g === 'girls' ? '#fff' : '#0f766e';
+  renderHistoryRows();
+}
+
+function renderHistoryDetail() {
+  const c = hist.cur;
+  const isAdmin = currentRole === 'admin';
+  document.getElementById('historyBody').innerHTML = `
+    <button onclick="histBack()" style="border:none;background:none;color:#0f766e;font-weight:700;font-size:13px;cursor:pointer;padding:0 0 8px;font-family:inherit">◀ رجوع للحصص</button>
+    <div style="font-weight:800;font-size:15px;margin-bottom:8px">${escHtml(weekdayAr(c.session_date))} ${escHtml(c.session_date)}</div>
+    <div style="display:flex;gap:6px;margin-bottom:8px">
+      <button id="hgBoys" onclick="histSetGroup('boys')" style="flex:1;border:1.5px solid #0f766e;border-radius:10px;padding:8px;font-weight:700;cursor:pointer;font-family:inherit">الأولاد</button>
+      <button id="hgGirls" onclick="histSetGroup('girls')" style="flex:1;border:1.5px solid #0f766e;border-radius:10px;padding:8px;font-weight:700;cursor:pointer;font-family:inherit">البنات</button>
+    </div>
+    <input type="text" class="field-input" id="histSearch" placeholder="ابحث باسم الطالب..." oninput="hist.search=this.value;renderHistoryRows()" style="width:100%;margin-bottom:8px" />
+    <div id="histSummary" style="font-size:12px;color:var(--muted);margin-bottom:6px"></div>
+    <div id="histRows"></div>
+    ${isAdmin ? '<button class="btn-save" style="margin-top:8px" onclick="exportHistorySession()">📥 تصدير شيت الحصة دي (Excel)</button>' : ''}
+  `;
+  histSetGroup(hist.group);
+}
+
+function renderHistoryRows() {
+  const c = hist.cur;
+  if (!c) return;
+  const all = c[hist.group] || [];
+  const q = (hist.search || '').trim();
+  const list = q ? all.filter(s => String(s.name).indexOf(q) >= 0) : all;
+  const present = all.filter(s => s.present).length;
+  const absent = all.filter(s => s.hw === 'absent').length;
+  document.getElementById('histSummary').innerHTML = `حاضر <b>${present}</b> • غايب <b>${absent}</b> • من <b>${all.length}</b>`;
+  const tag = (txt, bg, fg) => `<span style="background:${bg};color:${fg};border-radius:6px;padding:2px 7px;font-size:11px;font-weight:700;white-space:nowrap">${txt}</span>`;
+  document.getElementById('histRows').innerHTML = list.map(s => {
+    let status = s.present ? tag('حاضر', '#dcfce7', '#166534')
+      : (s.hw === 'absent' ? tag('غايب', '#fee2e2', '#991b1b') : tag('لم يحضر', '#e2e8f0', '#475569'));
+    let hw = '';
+    if (s.hw && s.hw !== 'absent') hw = tag(s.hw === 'nohw' ? 'No HW' : escHtml(s.hw), '#e0f2fe', '#075985');
+    const money = s.egp30 > 0 ? tag(s.egp30 + ' EGP', '#fef3c7', '#92400e') : '';
+    const abs = s.absences > 0 ? tag('غياب ' + s.absences, '#fce7f3', '#9d174d') : '';
+    const grades = EXAM_KEYS.filter(k => s[k] !== undefined && String(s[k]).trim() !== '')
+      .map(k => 'M-' + k.slice(1) + ': <b>' + escHtml(s[k]) + '</b>').join(' • ');
+    return `<div style="border-bottom:1px solid var(--border);padding:8px 2px">
+      <div style="font-weight:700;font-size:13px">${s.bn}. ${escHtml(s.name)}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">${status}${hw}${money}${abs}</div>
+      ${grades ? '<div style="font-size:12px;color:var(--muted);margin-top:4px;direction:ltr;text-align:right">' + grades + '</div>' : ''}
+      ${s.comments ? '<div style="font-size:12px;margin-top:3px;color:#475569">💬 ' + escHtml(s.comments) + '</div>' : ''}
+    </div>`;
+  }).join('') || '<div style="padding:12px;text-align:center;color:var(--muted)">مفيش نتائج</div>';
+}
+
+async function exportHistorySession() {
+  const c = hist.cur;
+  if (!c) return;
+  await exportSession(hist.group, { [hist.group]: c[hist.group], sessionDate: c.session_date });
 }
 
 async function resetAllData() {
