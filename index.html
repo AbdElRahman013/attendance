@@ -532,6 +532,22 @@
   </div>
 </div>
 
+<!-- Import old sheets -->
+<div class="modal-backdrop" id="importModal" onclick="closeModalOnBg(event, 'importModal')">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 class="modal-title">📥 استيراد الشيتات القديمة</h3>
+      <button class="close-btn" onclick="closeModal('importModal')">إغلاق</button>
+    </div>
+    <div style="font-size:12px;color:var(--muted);line-height:1.8;margin-bottom:10px">
+      اختار ملفات الإكسيل القديمة (أولاد وبنات، أي عدد). الأداة بتقرأها على جهازك وبتفهم كل شيت من عناوين أعمدته، وبتديك مراجعة قبل ما تحفظ أي حاجة. كل شيت بيتحفظ كحصة سابقة بتاريخها ويومها.
+    </div>
+    <input type="file" id="importFiles" accept=".xlsx,.xlsm" multiple style="display:none" onchange="importPickFiles(this.files)" />
+    <button class="btn-save" style="background:#0369a1" onclick="document.getElementById('importFiles').click()">📂 اختيار الملفات</button>
+    <div id="importBody" style="margin-top:12px"></div>
+  </div>
+</div>
+
 <!-- Past sessions -->
 <div class="modal-backdrop" id="historyModal" onclick="closeModalOnBg(event, 'historyModal')">
   <div class="modal">
@@ -713,6 +729,7 @@
     <div style="display:flex; flex-direction:column; gap:10px; margin-top:12px;">
       <button class="btn-export admin-only" onclick="exportFormattedExcel('boys')">تحميل شيت الأولاد بالتنسيق الأصلي (Boys.xlsx)</button>
       <button class="btn-export admin-only" onclick="exportFormattedExcel('girls')">تحميل شيت البنات بالتنسيق الأصلي (Girls.xlsx)</button>
+      <button class="btn-save admin-only" style="background:#0369a1;" onclick="openImport()">📥 استيراد الشيتات القديمة</button>
       <button class="btn-save admin-only" style="background:#0f766e;" onclick="openManage()">👥 إدارة الطلاب (إضافة / إزالة / تقرير)</button>
       <button class="btn-save admin-only" style="background:#0284c7;" onclick="startNewSession()">بدء حصة جديدة (تصفير الحضور والواجب فقط)</button>
       <button class="btn-end admin-only" style="background:#475569;" onclick="resetAllData()">تحميل آخر نسخة من السيرفر (تجاهل تعديلات الجهاز)</button>
@@ -2520,6 +2537,407 @@ function buildStudentReport(g, st, h) {
   return html;
 }
 
+/* ==================== IMPORT OLD SHEETS (admin) ==================== */
+let imp = { entries: [], resolve: {}, unmatched: {}, overwrite: false, busy: false, report: null, seq: 0 };
+
+function normName(s) {
+  return String(s || '').toLowerCase()
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
+    .replace(/[\u0623\u0625\u0622\u0671]/g, '\u0627')
+    .replace(/\u0649/g, '\u064A')
+    .replace(/\u0629/g, '\u0647')
+    .replace(/\s+/g, ' ').trim();
+}
+function lev(a, b) {
+  const m = a.length, n = b.length;
+  if (!m) return n;
+  if (!n) return m;
+  let prev = [];
+  for (let j = 0; j <= n; j++) prev[j] = j;
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  return prev[n];
+}
+function similarity(a, b) { const m = Math.max(a.length, b.length); return m ? 1 - lev(a, b) / m : 1; }
+
+function normHw(v) {
+  const t = String(v || '').trim();
+  if (!t) return '';
+  if (/absent|غائب|غايب/i.test(t)) return 'absent';
+  if (/^no\s*h\.?\s*w$/i.test(t.replace(/\s+/g, ' ')) || /nohw/i.test(t.replace(/[\s.]/g, ''))) return 'nohw';
+  return t;
+}
+
+function parseSheetXml(xml, sst) {
+  const d = new DOMParser().parseFromString(xml, 'application/xml');
+  const cells = {};
+  let maxRow = 0;
+  Array.from(d.getElementsByTagName('c')).forEach(c => {
+    const m = /^([A-Z]+)(\d+)$/.exec(c.getAttribute('r') || '');
+    if (!m) return;
+    const t = c.getAttribute('t');
+    const vEl = c.getElementsByTagName('v')[0];
+    let val = '', num = false;
+    if (t === 's') val = vEl ? (sst[+vEl.textContent] || '') : '';
+    else if (t === 'inlineStr') val = Array.from(c.getElementsByTagName('t')).map(x => x.textContent).join('');
+    else if (t === 'str' || t === 'e') val = vEl ? vEl.textContent : '';
+    else if (t === 'b') val = vEl ? (vEl.textContent === '1' ? 'TRUE' : 'FALSE') : '';
+    else if (vEl && vEl.textContent !== '') {
+      const f = parseFloat(vEl.textContent);
+      val = isNaN(f) ? vEl.textContent : String(Math.round(f * 1e6) / 1e6);
+      num = true;
+    }
+    if (val === '') return;
+    const r = +m[2];
+    cells[r + ':' + colToNum(m[1])] = { v: String(val), num };
+    if (r > maxRow) maxRow = r;
+  });
+  return { cells, maxRow };
+}
+
+function detectHeader(grid) {
+  for (let r = 1; r <= 15; r++) {
+    const map = {}, exams = {};
+    for (let c = 1; c <= 60; c++) {
+      const cell = grid.cells[r + ':' + c];
+      if (!cell) continue;
+      const tl = cell.v.trim().toLowerCase().replace(/\s+/g, '');
+      let m;
+      if (/^b\.?n\.?$/.test(tl) || tl === 'م' || tl === '#') map.bn = c;
+      else if (tl === 'name' || tl.indexOf('الاسم') >= 0 || /^اسم/.test(tl)) map.name = c;
+      else if (/egp|جنيه|غرامة/.test(tl)) map.egp = c;
+      else if (/h\.?w|واجب/.test(tl)) map.hw = c;
+      else if ((m = /^m-?\(?(\d+)\)?$/.exec(tl))) exams[+m[1]] = c;
+      else if (/comment|تعليق|ملاحظ/.test(tl)) map.comments = c;
+      else if (/absence|غياب/.test(tl)) map.absences = c;
+    }
+    if (map.name && (map.hw || map.egp || Object.keys(exams).length)) return { row: r, map, exams };
+  }
+  return null;
+}
+
+const WEEKDAY_WORDS = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6,
+  'الأحد': 0, 'الاحد': 0, 'الاثنين': 1, 'الإثنين': 1, 'الثلاثاء': 2, 'الأربعاء': 3, 'الاربعاء': 3, 'الخميس': 4, 'الجمعة': 5, 'السبت': 6 };
+
+function validDateIso(y, m, d) {
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null;
+  return isoDate(dt);
+}
+
+function detectMeta(grid, fileName, sheetName) {
+  let title = '', dateIso = null, day = null, dateFrom = '';
+  for (let r = 1; r <= 4; r++) {
+    for (let c = 1; c <= 24; c++) {
+      const cell = grid.cells[r + ':' + c];
+      if (!cell) continue;
+      const t = cell.v;
+      if (!title && r === 1) title = t;
+      if (!dateIso) {
+        const m = /(\d{1,2})\s*[\/\-.]\s*(\d{1,2})\s*[\/\-.]\s*(\d{4})/.exec(toEnDigits(t));
+        if (m) { dateIso = validDateIso(+m[3], +m[2], +m[1]); if (dateIso) dateFrom = 'الشيت'; }
+        else if (cell.num) {
+          const n = parseFloat(t);
+          if (Number.isInteger(n) && n > 40000 && n < 70000) { dateIso = isoDate(new Date(Date.UTC(1899, 11, 30) + n * 86400000)); dateFrom = 'الشيت'; }
+        }
+      }
+      if (day === null) {
+        const w = /(sunday|monday|tuesday|wednesday|thursday|friday|saturday|الأحد|الاحد|الاثنين|الإثنين|الثلاثاء|الأربعاء|الاربعاء|الخميس|الجمعة|السبت)/i.exec(t);
+        if (w) day = WEEKDAY_WORDS[w[1].toLowerCase()];
+      }
+    }
+  }
+  if (!dateIso) {
+    const f = toEnDigits(fileName);
+    let m = /(\d{1,2})\s*[-_.\/]\s*(\d{1,2})\s*[-_.\/]\s*(\d{4})/.exec(f);
+    if (m) dateIso = validDateIso(+m[3], +m[2], +m[1]);
+    else if ((m = /(\d{4})\s*[-_.\/]\s*(\d{1,2})\s*[-_.\/]\s*(\d{1,2})/.exec(f))) dateIso = validDateIso(+m[1], +m[2], +m[3]);
+    if (dateIso) dateFrom = 'اسم الملف';
+  }
+  const hay = (title + ' ' + sheetName + ' ' + fileName).toLowerCase();
+  let group = null;
+  if (/girl|بنات|بنت/.test(hay)) group = 'girls';
+  else if (/boy|اولاد|أولاد|ولاد/.test(hay)) group = 'boys';
+  return { title, dateIso, dateFrom, day, group };
+}
+
+function extractStudents(grid, header) {
+  const out = [];
+  const { map, exams } = header;
+  const get = (r, c) => (c && grid.cells[r + ':' + c]) ? grid.cells[r + ':' + c] : null;
+  for (let r = header.row + 1; r <= grid.maxRow; r++) {
+    const nm = get(r, map.name);
+    if (!nm) continue;
+    const name = nm.v.replace(/\s+/g, ' ').trim();
+    if (!name || /^(total|المجموع|الاجمالي|الإجمالي)/i.test(name)) continue;
+    const num = c => { const x = get(r, c); if (!x) return 0; const n = parseFloat(toEnDigits(x.v)); return isNaN(n) ? 0 : n; };
+    const txt = c => { const x = get(r, c); return x ? x.v.trim() : ''; };
+    const ex = {};
+    Object.keys(exams).forEach(n => { const v = txt(exams[n]); if (v) ex[n] = v; });
+    out.push({ name, egp30: num(map.egp), hw: txt(map.hw), exams: ex, comments: txt(map.comments), absences: Math.round(num(map.absences)) });
+  }
+  return out;
+}
+
+// بيقرا ملف إكسيل واحد ويرجّع شيت لكل ورقة مفهومة فيه
+async function parseWorkbookBuffer(buf, fileName) {
+  await loadJSZip();
+  const zip = await JSZip.loadAsync(buf);
+  const dp = new DOMParser();
+  const txt = async p => { const f = zip.file(p); return f ? await f.async('string') : null; };
+  const sstXml = await txt('xl/sharedStrings.xml');
+  let sst = [];
+  if (sstXml) {
+    const d = dp.parseFromString(sstXml, 'application/xml');
+    sst = Array.from(d.getElementsByTagName('si')).map(si => Array.from(si.getElementsByTagName('t')).map(t => t.textContent).join(''));
+  }
+  const wb = dp.parseFromString(await txt('xl/workbook.xml'), 'application/xml');
+  const rels = dp.parseFromString(await txt('xl/_rels/workbook.xml.rels'), 'application/xml');
+  const relMap = {};
+  Array.from(rels.getElementsByTagName('Relationship')).forEach(r => { relMap[r.getAttribute('Id')] = r.getAttribute('Target'); });
+  const out = [];
+  const sheets = Array.from(wb.getElementsByTagName('sheet'));
+  for (const sh of sheets) {
+    const name = sh.getAttribute('name') || '';
+    const rid = sh.getAttribute('r:id') || sh.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
+    let target = relMap[rid];
+    if (!target) continue;
+    target = target.charAt(0) === '/' ? target.slice(1) : 'xl/' + target;
+    const xml = await txt(target);
+    if (!xml) continue;
+    const grid = parseSheetXml(xml, sst);
+    const header = detectHeader(grid);
+    if (!header) { out.push({ fileName, sheetName: name, error: 'مش لاقي صف العناوين (Name / H.W / M-...)' }); continue; }
+    const meta = detectMeta(grid, fileName, name);
+    const students = extractStudents(grid, header);
+    out.push({ fileName, sheetName: name, group: meta.group, dateIso: meta.dateIso, dateFrom: meta.dateFrom, day: meta.day,
+               exams: Object.keys(header.exams).map(Number).sort((a, b) => a - b), hasHw: !!header.map.hw, hasAbs: !!header.map.absences,
+               hasEgp: !!header.map.egp, hasCmt: !!header.map.comments, students });
+  }
+  return out;
+}
+
+async function importPickFiles(fileList) {
+  if (currentRole !== 'admin') return;
+  const files = Array.from(fileList || []);
+  if (!files.length) return;
+  const body = document.getElementById('importBody');
+  body.innerHTML = '<div style="padding:14px;text-align:center;color:var(--muted)">جاري قراءة الملفات...</div>';
+  imp.report = null;
+  for (const f of files) {
+    try {
+      const sheets = await parseWorkbookBuffer(await f.arrayBuffer(), f.name);
+      sheets.forEach(sh => { sh.id = ++imp.seq; imp.entries.push(sh); });
+    } catch (e) {
+      imp.entries.push({ id: ++imp.seq, fileName: f.name, sheetName: '', error: 'الملف مش بصيغة إكسيل مفهومة' });
+    }
+  }
+  document.getElementById('importFiles').value = '';
+  importMatch();
+  renderImport();
+}
+
+function importIndex(group) {
+  const idx = {};
+  db[group].concat(db.left[group]).forEach(s => { const k = normName(s.name); if (!idx[k]) idx[k] = s; });
+  return idx;
+}
+
+function importMatch() {
+  imp.unmatched = {};
+  imp.entries.forEach(e => {
+    if (e.error) return;
+    e.matched = 0; e.missing = 0;
+    if (!e.group) return;
+    const idx = importIndex(e.group);
+    const pool = db[e.group].concat(db.left[e.group]);
+    e.students.forEach(st => {
+      const k = normName(st.name);
+      if (idx[k]) { e.matched++; return; }
+      e.missing++;
+      const key = e.group + '|' + k;
+      if (!imp.unmatched[key]) {
+        let best = null, bs = 0;
+        pool.forEach(s => { const sc = similarity(k, normName(s.name)); if (sc > bs) { bs = sc; best = s; } });
+        imp.unmatched[key] = { key, name: st.name, group: e.group, count: 0, suggest: bs >= 0.82 ? best : null, score: bs };
+        if (!imp.resolve[key]) imp.resolve[key] = (bs >= 0.82 && best) ? 'row:' + best.row : 'new';
+      }
+      imp.unmatched[key].count++;
+    });
+  });
+}
+
+function importSet(id, field, val) {
+  const e = imp.entries.find(x => x.id === id);
+  if (!e) return;
+  if (field === 'date') e.dateIso = val || null;
+  else if (field === 'group') e.group = val || null;
+  importMatch();
+  renderImport();
+}
+function importRemove(id) { imp.entries = imp.entries.filter(x => x.id !== id); importMatch(); renderImport(); }
+function importResolve(key, val) { imp.resolve[key] = val; }
+function importClear() { imp.entries = []; imp.report = null; importMatch(); renderImport(); }
+
+function openImport() {
+  if (currentRole !== 'admin') { showToast('هذه الصلاحية متاحة للمدير فقط'); return; }
+  closeModal('toolsModal');
+  document.getElementById('importModal').classList.add('open');
+  renderImport();
+}
+
+function importEntryReady(e) { return !e.error && e.group && e.dateIso && e.students.length > 0; }
+
+function renderImport() {
+  const body = document.getElementById('importBody');
+  if (!body) return;
+  if (imp.report) {
+    body.innerHTML = '<div style="font-weight:800;margin-bottom:6px">نتيجة الاستيراد</div>' + imp.report.map(r =>
+      `<div style="border-bottom:1px solid var(--border);padding:6px 2px;font-size:12px;line-height:1.7"><span style="color:${r.ok ? '#16a34a' : '#dc2626'};font-weight:800">${r.ok ? '✓' : '✗'}</span> ${escHtml(r.label)} — ${escHtml(r.msg)}</div>`).join('') +
+      '<button class="btn-save" style="margin-top:10px" onclick="importClear()">تمام</button>';
+    return;
+  }
+  if (!imp.entries.length) { body.innerHTML = ''; return; }
+  const busy = imp.busy;
+  let html = '';
+  imp.entries.forEach(e => {
+    if (e.error) {
+      html += `<div style="border:1px solid #fecaca;background:#fef2f2;border-radius:12px;padding:10px;margin-bottom:8px;font-size:12px">
+        <b>${escHtml(e.fileName)}${e.sheetName ? ' / ' + escHtml(e.sheetName) : ''}</b><br><span style="color:#b91c1c">${escHtml(e.error)}</span>
+        <div><button onclick="importRemove(${e.id})" style="margin-top:6px;border:none;background:#e2e8f0;border-radius:8px;padding:4px 10px;cursor:pointer;font-family:inherit">إزالة</button></div></div>`;
+      return;
+    }
+    const dayName = e.dateIso ? AR_DAYS[new Date(e.dateIso + 'T00:00:00Z').getUTCDay()] : '';
+    const dayMismatch = e.dateIso && e.day !== null && e.day !== undefined && new Date(e.dateIso + 'T00:00:00Z').getUTCDay() !== e.day;
+    const ok = importEntryReady(e);
+    html += `<div style="border:1px solid ${ok ? 'var(--border)' : '#fcd34d'};border-radius:12px;padding:10px;margin-bottom:8px;background:#fff">
+      <div style="display:flex;justify-content:space-between;gap:6px;align-items:center">
+        <b style="font-size:13px;word-break:break-all">${escHtml(e.fileName)}${e.sheetName ? ' <span style="color:var(--muted);font-weight:600">/ ' + escHtml(e.sheetName) + '</span>' : ''}</b>
+        <button onclick="importRemove(${e.id})" style="border:none;background:#e2e8f0;border-radius:8px;padding:4px 10px;cursor:pointer;font-family:inherit;font-size:12px">إزالة</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px">
+        <select class="field-input" onchange="importSet(${e.id},'group',this.value)" style="width:100%">
+          <option value="">المجموعة؟</option>
+          <option value="boys" ${e.group === 'boys' ? 'selected' : ''}>الأولاد</option>
+          <option value="girls" ${e.group === 'girls' ? 'selected' : ''}>البنات</option>
+        </select>
+        <input type="date" class="field-input" value="${e.dateIso || ''}" onchange="importSet(${e.id},'date',this.value)" style="width:100%;direction:ltr;text-align:center" />
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.8">
+        ${e.dateIso ? 'اليوم: <b>' + dayName + '</b> (التاريخ من ' + escHtml(e.dateFrom) + ')' : '<span style="color:#b45309;font-weight:700">اختار التاريخ</span>'}
+        ${dayMismatch ? '<br><span style="color:#b45309">⚠️ اليوم المكتوب في الشيت مش بيطابق التاريخ ده، راجعه</span>' : ''}
+        <br>طلاب: <b>${e.students.length}</b>${e.group ? ' • متعرّف عليهم: <b>' + e.matched + '</b>' + (e.missing ? ' • <span style="color:#b45309">غير معروفين: <b>' + e.missing + '</b></span>' : '') : ''}
+        <br>امتحانات: ${e.exams.length ? e.exams.map(n => 'M-' + n).join(' ') : '—'}${e.hasHw ? '' : ' • <span style="color:#b45309">مفيش عمود H.W</span>'}${e.hasAbs ? '' : ' • <span style="color:#b45309">مفيش عمود Absences</span>'}
+      </div></div>`;
+  });
+  const un = Object.values(imp.unmatched);
+  if (un.length) {
+    html += '<div style="font-weight:800;margin:12px 0 4px;font-size:13px">أسماء مش لاقيها في الطلاب الحاليين</div><div style="font-size:11px;color:var(--muted);line-height:1.7;margin-bottom:6px">اختار لكل اسم: طالب سابق (بيتضاف لقايمة المُزالين وبياناته القديمة بتفضل)، أو اربطه بطالب موجود لو الاسم مكتوب مختلف، أو تجاهله.</div>';
+    un.forEach(u => {
+      const pool = db[u.group].concat(db.left[u.group]);
+      const cur = imp.resolve[u.key] || 'new';
+      html += `<div style="border-bottom:1px solid var(--border);padding:6px 2px"><div style="font-size:13px;font-weight:700">${escHtml(u.name)} <span style="font-size:11px;color:var(--muted)">(${u.group === 'boys' ? 'أولاد' : 'بنات'} • ${u.count} شيت)</span></div>
+        <select class="field-input" onchange="importResolve('${u.key.replace(/'/g, "\\'")}', this.value)" style="width:100%;margin-top:4px">
+          <option value="new" ${cur === 'new' ? 'selected' : ''}>طالب سابق (إضافة للمُزالين)</option>
+          <option value="skip" ${cur === 'skip' ? 'selected' : ''}>تجاهل</option>
+          ${pool.map(s => `<option value="row:${s.row}" ${cur === 'row:' + s.row ? 'selected' : ''}>ده هو: ${escHtml(s.name)}</option>`).join('')}
+        </select></div>`;
+    });
+  }
+  const readyN = imp.entries.filter(importEntryReady).length;
+  html += `<label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12px;font-weight:700"><input type="checkbox" ${imp.overwrite ? 'checked' : ''} onchange="imp.overwrite=this.checked" style="width:16px;height:16px"> استبدال الحصص المسجلة من الأداة لو نفس التاريخ</label>
+    <div style="font-size:11px;color:var(--muted);line-height:1.7;margin:6px 0 8px">الحضور بيتحدد من: Absent في عمود الواجب، أو زيادة رقم الغياب عن الشيت اللي قبله. والباقي بيتحسب حاضر. بيانات الطلاب الحالية مبتتغيرش.</div>
+    <button class="btn-save" style="background:#0369a1" ${readyN && !busy ? '' : 'disabled style="opacity:.5;background:#0369a1"'} onclick="importCommit()">${busy ? 'جاري الاستيراد...' : '✓ استيراد ' + readyN + ' شيت'}</button>`;
+  body.innerHTML = html;
+}
+
+function importTarget(e, st, created) {
+  const k = normName(st.name);
+  const idx = importIndex(e.group);
+  if (idx[k]) return idx[k];
+  const key = e.group + '|' + k;
+  const r = imp.resolve[key] || 'new';
+  if (r === 'skip') return null;
+  if (r.indexOf('row:') === 0) {
+    const row = parseInt(r.slice(4), 10);
+    return db[e.group].concat(db.left[e.group]).find(s => s.row === row) || null;
+  }
+  return created[key] || null;
+}
+
+async function importCommit() {
+  if (currentRole !== 'admin' || imp.busy) return;
+  const ready = imp.entries.filter(importEntryReady);
+  if (!ready.length) return;
+  imp.busy = true;
+  renderImport();
+  const report = [];
+  try {
+    // 1) الأسماء اللي هتتحول لطلاب سابقين
+    const created = {};
+    let any = false;
+    Object.values(imp.unmatched).forEach(u => {
+      if ((imp.resolve[u.key] || 'new') !== 'new') return;
+      if (!ready.some(e => e.group === u.group)) return;
+      const g = u.group;
+      const all = db[g].concat(db.left[g]);
+      const row = Math.max(0, ...all.map(x => x.row)) + 1;
+      const bn = Math.max(0, ...all.map(x => x.bn || 0)) + 1;
+      const st = { row, bn, name: u.name, egp30: 0, hw: '', present: false, comments: '', absences: 0, absCharged: false,
+                   active: false, leftAt: 'مستورد من شيت قديم', updatedAt: Date.now(), ord: row };
+      db.left[g].push(st);
+      created[u.key] = st;
+      any = true;
+    });
+    if (any) { ['boys', 'girls'].forEach(g => sortStudents(db.left[g])); saveDB(); await pushChanges(); }
+
+    // 2) بنبني صفوف كل شيت بالترتيب الزمني لكل مجموعة، ونحدد الحضور
+    for (const g of ['boys', 'girls']) {
+      const list = ready.filter(e => e.group === g).sort((a, b) => a.dateIso.localeCompare(b.dateIso));
+      const prevAbs = {};
+      for (const e of list) {
+        const label = e.fileName + (e.sheetName ? ' / ' + e.sheetName : '');
+        const rows = [], seen = {};
+        let absHw = 0, absCount = 0, skipped = 0;
+        e.students.forEach(st => {
+          const t = importTarget(e, st, created);
+          if (!t || seen[t.row]) { skipped++; return; }
+          seen[t.row] = true;
+          const hw = normHw(st.hw);
+          const byHw = hw === 'absent';
+          const byCount = prevAbs[t.row] !== undefined && st.absences > prevAbs[t.row];
+          const r = { row: t.row, bn: t.bn, name: t.name, egp30: st.egp30, hw, present: !(byHw || byCount), absences: st.absences,
+                      comments: st.comments, absCharged: false, fineCharged: false };
+          Object.keys(st.exams).forEach(n => { r['m' + n] = st.exams[n]; });
+          if (byHw) absHw++; else if (byCount) absCount++;
+          prevAbs[t.row] = st.absences;
+          rows.push(r);
+        });
+        const d = new Date(e.dateIso + 'T00:00:00Z');
+        try {
+          await rpc('app_import_session_group', { p_code: cloud.adminCode, p_date: fmtDate(d), p_grp: g, p_rows: rows,
+                                                  p_ended_at: e.dateIso + 'T12:00:00Z', p_overwrite: !!imp.overwrite });
+          report.push({ ok: true, label, msg: AR_DAYS[d.getUTCDay()] + ' ' + fmtDate(d) + ' • ' + rows.length + ' طالب • غايب: ' + (absHw + absCount) + ' (من الواجب ' + absHw + '، من زيادة الغياب ' + absCount + ')' + (skipped ? ' • اتجاهل ' + skipped : '') });
+        } catch (err) {
+          report.push({ ok: false, label, msg: /exists/.test(err.message) ? 'فيه حصة مسجلة من الأداة بنفس التاريخ (فعّل "استبدال" لو عايز تستبدلها)' : ('فشل: ' + err.message) });
+        }
+      }
+    }
+  } catch (err) {
+    report.push({ ok: false, label: 'الاستيراد', msg: 'حصل خطأ: ' + err.message });
+  }
+  imp.busy = false;
+  imp.report = report;
+  imp.entries = [];
+  imp.unmatched = {};
+  renderImport();
+  render();
+  if (document.getElementById('historyModal').classList.contains('open')) openHistory();
+}
+
 /* ==================== PAST SESSIONS ==================== */
 let hist = { list: [], cur: null, group: 'boys', search: '' };
 
@@ -2558,7 +2976,7 @@ function renderHistoryList() {
     return `<div onclick="openHistorySession(${x.id})" style="border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:8px;cursor:pointer;background:#fff">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
         <b style="font-size:14px">${escHtml(wd)} ${escHtml(x.session_date)}</b>
-        <span style="font-size:11px;color:${done ? '#16a34a' : '#d97706'};font-weight:700">${done ? 'منتهية ✓' : 'غير مكتملة'}</span>
+        <span style="font-size:11px;color:${done ? '#16a34a' : '#d97706'};font-weight:700">${x.source === 'imported' ? '<span style="background:#e0f2fe;color:#075985;border-radius:6px;padding:1px 6px;margin-left:4px">مستورد</span>' : ''}${done ? 'منتهية ✓' : 'غير مكتملة'}</span>
       </div>
       <div style="font-size:12px;color:var(--muted);margin-top:4px;line-height:1.7">
         الأولاد: حاضر <b>${x.boys_present}</b> • غايب <b>${x.boys_absent}</b> (من ${x.boys_total})<br>
@@ -2607,6 +3025,7 @@ function renderHistoryDetail() {
     <div id="histSummary" style="font-size:12px;color:var(--muted);margin-bottom:6px"></div>
     <div id="histRows"></div>
     ${isAdmin ? '<button class="btn-save" style="margin-top:8px" onclick="exportHistorySession()">📥 تصدير شيت الحصة دي (Excel)</button>' : ''}
+    ${isAdmin && c.source === 'imported' ? '<button class="btn-pay" style="width:100%;margin-top:8px;background:#dc2626" onclick="deleteImportedSession()">🗑 حذف الحصة المستوردة دي</button>' : ''}
   `;
   histSetGroup(hist.group);
 }
@@ -2618,12 +3037,13 @@ function renderHistoryRows() {
   const q = (hist.search || '').trim();
   const list = q ? all.filter(s => String(s.name).indexOf(q) >= 0) : all;
   const present = all.filter(s => s.present).length;
-  const absent = all.filter(s => s.hw === 'absent').length;
+  const endedG = !!(c.ended && c.ended[hist.group]);
+  const absent = all.filter(s => !s.present && (s.hw === 'absent' || endedG)).length;
   document.getElementById('histSummary').innerHTML = `حاضر <b>${present}</b> • غايب <b>${absent}</b> • من <b>${all.length}</b>`;
   const tag = (txt, bg, fg) => `<span style="background:${bg};color:${fg};border-radius:6px;padding:2px 7px;font-size:11px;font-weight:700;white-space:nowrap">${txt}</span>`;
   document.getElementById('histRows').innerHTML = list.map(s => {
     let status = s.present ? tag('حاضر', '#dcfce7', '#166534')
-      : (s.hw === 'absent' ? tag('غايب', '#fee2e2', '#991b1b') : tag('لم يحضر', '#e2e8f0', '#475569'));
+      : ((s.hw === 'absent' || endedG) ? tag('غايب', '#fee2e2', '#991b1b') : tag('لم يحضر', '#e2e8f0', '#475569'));
     let hw = '';
     if (s.hw && s.hw !== 'absent') hw = tag(s.hw === 'nohw' ? 'No HW' : escHtml(s.hw), '#e0f2fe', '#075985');
     const money = s.egp30 > 0 ? tag(s.egp30 + ' EGP', '#fef3c7', '#92400e') : '';
@@ -2637,6 +3057,21 @@ function renderHistoryRows() {
       ${s.comments ? '<div style="font-size:12px;margin-top:3px;color:#475569">💬 ' + escHtml(s.comments) + '</div>' : ''}
     </div>`;
   }).join('') || '<div style="padding:12px;text-align:center;color:var(--muted)">مفيش نتائج</div>';
+}
+
+async function deleteImportedSession() {
+  const c = hist.cur;
+  if (!c || currentRole !== 'admin') return;
+  if (!confirm('حذف الحصة المستوردة ' + c.session_date + '؟ (الحصص اللي اتسجلت من الأداة مبتتحذفش من هنا)')) return;
+  try {
+    await rpc('app_delete_session', { p_code: cloud.adminCode, p_id: c.id });
+    hist.list = await rpc('app_list_sessions', { p_code: cloud.adminCode });
+    hist.cur = null;
+    renderHistoryList();
+    showToast('تم حذف الحصة');
+  } catch (e) {
+    showToast('تعذر الحذف');
+  }
 }
 
 async function exportHistorySession() {
