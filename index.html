@@ -2778,13 +2778,21 @@ function parseSheetXml(xml, sst) {
   return { cells, maxRow };
 }
 
+function cleanHeader(t) {
+  let x = String(t || '').replace(/\(\s*[.\u2026\s]*\/\s*\d+(?:\.\d+)?\s*\)/g, ' ');
+  x = x.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\uFE0F]/gu, ' ');
+  return x.replace(/\s+/g, ' ').trim();
+}
+
 function detectHeader(grid) {
   for (let r = 1; r <= 15; r++) {
     const map = {}, exams = {}, others = {};
     for (let c = 1; c <= 60; c++) {
       const cell = grid.cells[r + ':' + c];
       if (!cell) continue;
-      const tl = cell.v.trim().toLowerCase().replace(/\s+/g, '');
+      const clean = cleanHeader(cell.v);
+      const tl = clean.toLowerCase().replace(/\s+/g, '');
+      if (!tl) continue;
       let m;
       if (/^b\.?n\.?$/.test(tl) || tl === 'م' || tl === '#') map.bn = c;
       else if (tl === 'name' || tl.indexOf('الاسم') >= 0 || /^اسم/.test(tl)) map.name = c;
@@ -2793,7 +2801,7 @@ function detectHeader(grid) {
       else if ((m = /^m-?\(?(\d+)\)?$/.exec(tl))) exams[+m[1]] = c;
       else if (/comment|تعليق|ملاحظ/.test(tl)) map.comments = c;
       else if (/absence|غياب/.test(tl)) map.absences = c;
-      else others[c] = cell.v.trim();
+      else others[c] = clean;
     }
     if (map.name && (map.hw || map.egp || Object.keys(exams).length)) return { row: r, map, exams, others };
   }
@@ -2809,27 +2817,37 @@ function validDateIso(y, m, d) {
   return isoDate(dt);
 }
 
-function detectMeta(grid, fileName, sheetName) {
-  let title = '', dateIso = null, day = null, dateFrom = '';
+function detectMeta(grid, fileName, sheetName, header) {
+  let title = '', day = null;
+  const cands = [];
   for (let r = 1; r <= 4; r++) {
     for (let c = 1; c <= 24; c++) {
       const cell = grid.cells[r + ':' + c];
       if (!cell) continue;
       const t = cell.v;
       if (!title && r === 1) title = t;
-      if (!dateIso) {
-        const m = /(\d{1,2})\s*[\/\-.]\s*(\d{1,2})\s*[\/\-.]\s*(\d{4})/.exec(toEnDigits(t));
-        if (m) { dateIso = validDateIso(+m[3], +m[2], +m[1]); if (dateIso) dateFrom = 'الشيت'; }
-        else if (cell.num) {
-          const n = parseFloat(t);
-          if (Number.isInteger(n) && n > 40000 && n < 70000) { dateIso = isoDate(new Date(Date.UTC(1899, 11, 30) + n * 86400000)); dateFrom = 'الشيت'; }
-        }
+      const m = /(\d{1,2})\s*[\/\-.]\s*(\d{1,2})\s*[\/\-.]\s*(\d{4})/.exec(toEnDigits(t));
+      if (m) { const iso = validDateIso(+m[3], +m[2], +m[1]); if (iso) cands.push({ iso, r, c }); }
+      else if (cell.num) {
+        const n = parseFloat(t);
+        if (Number.isInteger(n) && n > 40000 && n < 70000) cands.push({ iso: isoDate(new Date(Date.UTC(1899, 11, 30) + n * 86400000)), r, c });
       }
       if (day === null) {
         const w = /(sunday|monday|tuesday|wednesday|thursday|friday|saturday|الأحد|الاحد|الاثنين|الإثنين|الثلاثاء|الأربعاء|الاربعاء|الخميس|الجمعة|السبت)/i.exec(t);
         if (w) day = WEEKDAY_WORDS[w[1].toLowerCase()];
       }
     }
+  }
+  let dateIso = null, dateFrom = '';
+  if (cands.length) {
+    // لو فيه أكتر من تاريخ (تاريخ الحصة وتاريخ الامتحان): نختار اللي يوافق اليوم المكتوب، وإلا اللي فوق عمود الواجب، وإلا الأول
+    const dow = iso => new Date(iso + 'T00:00:00Z').getUTCDay();
+    let pick = null;
+    if (day !== null) pick = cands.find(x => dow(x.iso) === day);
+    if (!pick && header && header.map && header.map.hw) pick = cands.find(x => x.c === header.map.hw);
+    if (!pick) pick = cands[0];
+    dateIso = pick.iso;
+    dateFrom = 'الشيت';
   }
   if (!dateIso) {
     const f = toEnDigits(fileName);
@@ -2894,7 +2912,7 @@ async function parseWorkbookBuffer(buf, fileName) {
     const grid = parseSheetXml(xml, sst);
     const header = detectHeader(grid);
     if (!header) { out.push({ fileName, sheetName: name, error: 'مش لاقي صف العناوين (Name / H.W / M-...)' }); continue; }
-    const meta = detectMeta(grid, fileName, name);
+    const meta = detectMeta(grid, fileName, name, header);
     const students = extractStudents(grid, header);
     out.push({ fileName, sheetName: name, group: meta.group, dateIso: meta.dateIso, dateFrom: meta.dateFrom, day: meta.day,
                exams: Object.keys(header.exams).map(Number).sort((a, b) => a - b), extras: Object.values(header.others || {}), hasHw: !!header.map.hw, hasAbs: !!header.map.absences,
@@ -2940,7 +2958,7 @@ function importColumns() {
       if (!seen[k]) seen[k] = { key: k, label: t, count: 0 };
       seen[k].count++;
       if (!imp.colLabel[k]) imp.colLabel[k] = t;
-      if (!imp.colMap[k]) imp.colMap[k] = TEST_LIKE.test(t) ? 'exam' : 'ignore';
+      if (!imp.colMap[k]) imp.colMap[k] = (TEST_LIKE.test(t) || /^m\d+$/.test(k) || EXAM_KEYS.some(x => normHeader(examLabel(x)) === k)) ? 'exam' : 'ignore';
     });
   });
   return Object.values(seen);
