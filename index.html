@@ -462,6 +462,7 @@
   <div class="stat-box"><div class="stat-num" style="color:var(--amber)" id="stat-nohw">0</div><div class="stat-lbl">بدون واجب</div></div>
 </div>
 
+<div id="srvWarn" style="display:none;background:#fef3c7;color:#92400e;border:1.5px solid #d97706;border-radius:12px;margin:0 12px 10px;padding:10px 12px;font-size:12px;font-weight:700;line-height:1.8">⚠️ السيرفر محتاج تحديث: شغّل ملف <b>supabase_update_exams2.sql</b> في Supabase (SQL Editor ← Run). من غيره الامتحانات الجديدة وأسماءها مش بتتحفظ على السيرفر. بعد ما تشغّله دوس ↻ وهتتحفظ لوحدها.</div>
 <div class="quick-row">
   <button class="qa" onclick="openExamStats()"><span class="qi">📊</span><span class="ql">الدرجات والإحصائية</span></button>
   <button class="qa admin-only" onclick="openHistory()"><span class="qi">🗂</span><span class="ql">الحصص السابقة</span></button>
@@ -1416,6 +1417,17 @@ function isoMinus5(nowStr) {
 }
 
 const DEFAULT_EXAMS = ['m5', 'm6', 'm7', 'm8', 'm9', 'm10', 'm11', 'm12'];
+function healExamKeys() {
+  const found = [];
+  db.boys.concat(db.girls, db.left.boys, db.left.girls).forEach(s => Object.keys(s).forEach(k => {
+    if (/^(m\d+|x_[a-z0-9_]+)$/.test(k) && String(s[k] == null ? '' : s[k]).trim() !== '' && EXAM_KEYS.indexOf(k) < 0 && found.indexOf(k) < 0) found.push(k);
+  }));
+  if (found.length) {
+    db.exams = EXAM_KEYS.concat(found);
+    applyExamKeys();
+    logEvent('healed exam keys: ' + found.join(','));
+  }
+}
 function applyExamKeys() {
   const list = (db.exams && db.exams.length) ? db.exams : DEFAULT_EXAMS;
   EXAM_KEYS.length = 0;
@@ -1425,7 +1437,7 @@ function applyExamKeys() {
 function examLabel(k) {
   const l = db.examLabels && db.examLabels[k];
   if (l) return l;
-  return /^m\d+$/.test(k) ? 'M-(' + k.slice(1) + ')' : k;
+  return /^m\d+$/.test(k) ? 'M-(' + k.slice(1) + ')' : (k.indexOf('x_') === 0 ? k.slice(2) : k);
 }
 function normHeader(t) { return String(t || '').toLowerCase().replace(/[\s\-_()]/g, ''); }
 function metaGet(k) {
@@ -1460,6 +1472,7 @@ function sortStudents(arr) { arr.sort((a, b) => (ordOf(a) - ordOf(b)) || (a.row 
 function dispNo(g, s) { return db[g].findIndex(x => x.row === s.row) + 1; } // الرقم المعروض = ترتيب الطالب في القايمة
 
 function setupFromState(st) {
+  const prevLabels = Object.assign({}, db.examLabels || {});
   const nd = { boys: [], girls: [], left: { boys: [], girls: [] }, sessionEnded: { boys: false, girls: false }, sessionDate: db.sessionDate || '', exams: DEFAULT_EXAMS.slice(), examLabels: {} };
   cloud.pushed = {};
   cloud.metaPushed = {};
@@ -1478,6 +1491,8 @@ function setupFromState(st) {
   db = nd;
   applyExamKeys();
   META_KEYS.forEach(k => { cloud.metaPushed[k] = stable(metaGet(k)); });
+  healExamKeys(); // امتحانات ليها درجات بس مش في قايمة السيرفر: بترجع، وبتتبعت للسيرفر لما يتحدّث
+  EXAM_KEYS.forEach(k => { if (!db.examLabels[k] && prevLabels[k]) db.examLabels[k] = prevLabels[k]; }); // أسماء اتعرفت على الجهاز ولسه السيرفر ماخدهاش
   cloud.since = isoMinus5(st.now);
 }
 
@@ -1608,11 +1623,18 @@ async function pushChanges() {
       const v = metaGet(k);
       const str = stable(v);
       if (str !== cloud.metaPushed[k]) {
+        if ((k === 'exams' || k === 'examLabels') && cloud.needsSql && Date.now() < (cloud.sqlRetryAt || 0)) continue;
         try {
           await rpc('app_save_meta', { p_code: sendCode, p_key: k, p_value: v });
           cloud.metaPushed[k] = str;
+          if (k === 'exams' || k === 'examLabels') { if (cloud.needsSql) logEvent('server SQL is updated now'); cloud.needsSql = false; setSrvWarn(false); }
         } catch (e) {
-          if (e.adminOnly) { /* المساعد مش مسموح له: هيرجع للقيمة اللي على السيرفر مع التحديث الجاي */ delete cloud.metaPushed[k]; }
+          if (/bad_exams|bad_labels|bad_key/.test(e.message)) {
+            cloud.needsSql = true;
+            cloud.sqlRetryAt = Date.now() + 60000;
+            logEvent('SERVER NEEDS SQL UPDATE: ' + e.message);
+            setSrvWarn(true);
+          } else if (e.adminOnly) { /* المساعد مش مسموح له: هيرجع للقيمة اللي على السيرفر مع التحديث الجاي */ delete cloud.metaPushed[k]; }
           else throw e;
         }
       }
@@ -1625,7 +1647,7 @@ async function pushChanges() {
       }
     }
     cacheDB();
-    setSyncLabel('متزامن مع السيرفر ✓');
+    setSyncLabel(cloud.needsSql ? 'السيرفر محتاج تحديث SQL ⚠' : 'متزامن مع السيرفر ✓');
   } catch (e) {
     handleCloudError(e, 'push');
   } finally {
@@ -1634,6 +1656,10 @@ async function pushChanges() {
   }
 }
 
+function setSrvWarn(on) {
+  const el = document.getElementById('srvWarn');
+  if (el) el.style.display = on ? 'block' : 'none';
+}
 let pollFailing = false;
 async function pollOnce() {
   if (!cloud.loaded || cloud.pushing || document.hidden) return; // مفيش استعلام والصفحة مش قدام عينك
@@ -1647,7 +1673,7 @@ async function pollOnce() {
     if (hasPending()) { await pushChanges(); return; }
     const st = await rpc('app_get_state', { p_code: cloud.code, p_since: cloud.since });
     const changed = applyServerChanges(st);
-    if (changed) { cacheDB(); logEvent('poll: server changes applied (' + (st.students || []).length + ' rows)'); }
+    if (changed) { healExamKeys(); cacheDB(); logEvent('poll: server changes applied (' + (st.students || []).length + ' rows)'); }
     if (pollFailing) { pollFailing = false; logEvent('connection restored'); }
     setSyncLabel('متزامن مع السيرفر ✓');
     if (changed) render();
@@ -1695,7 +1721,7 @@ async function bootstrapCloud() {
   try {
     const st = await rpc('app_get_state', { p_code: code, p_since: null });
     cloud.code = code;
-    try { const c0 = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); cloud.snaps = (c0 && c0.snaps) || []; } catch (x) { cloud.snaps = []; }
+    try { const c0 = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); cloud.snaps = (c0 && c0.snaps) || []; if (c0 && c0.db && c0.db.examLabels) db.examLabels = c0.db.examLabels; } catch (x) { cloud.snaps = []; }
     setupFromState(st);
     cloud.loaded = true;
     lastFullReload = Date.now();
@@ -2471,7 +2497,7 @@ function examMNumbers() { return EXAM_KEYS.filter(k => /^m\d+$/.test(k)).map(k =
 
 function addExamModel() {
   if (currentRole !== 'admin') return;
-  if (EXAM_KEYS.length >= 30) { showToast('وصلت للحد الأقصى (30 امتحان)'); return; }
+  if (EXAM_KEYS.length >= MAX_EXAMS) { showToast('وصلت للحد الأقصى (60 امتحان)'); return; }
   const n = Math.max(...examMNumbers()) + 1;
   if (!confirm('إضافة موديل M-(' + n + ')؟\nهيظهر لكل الطلاب في التعديل والإحصائية والإكسيل.')) return;
   db.exams = EXAM_KEYS.concat('m' + n);
@@ -2495,7 +2521,7 @@ function addCustomExam() {
   const label = inp.value.replace(/\s+/g, ' ').trim();
   if (!label) { showToast('اكتب اسم الامتحان'); return; }
   if (label.length > 40) { showToast('الاسم طويل (40 حرف بحد أقصى)'); return; }
-  if (EXAM_KEYS.length >= 30) { showToast('وصلت للحد الأقصى (30 امتحان)'); return; }
+  if (EXAM_KEYS.length >= MAX_EXAMS) { showToast('وصلت للحد الأقصى (60 امتحان)'); return; }
   if (EXAM_KEYS.some(k => normHeader(examLabel(k)) === normHeader(label))) { showToast('فيه امتحان بنفس الاسم'); return; }
   const key = newCustomExamKey(label);
   db.examLabels = Object.assign({}, db.examLabels, { [key]: label });
@@ -2505,6 +2531,21 @@ function addCustomExam() {
   inp.value = '';
   renderManage();
   showToast('تمت إضافة ' + label + ' ✓');
+}
+
+function renameExam(key) {
+  if (currentRole !== 'admin') return;
+  const v = prompt('اسم الامتحان', examLabel(key));
+  if (v === null) return;
+  const label = v.replace(/\s+/g, ' ').trim();
+  if (!label || label.length > 40) { showToast('اكتب اسم من 1 لـ 40 حرف'); return; }
+  if (EXAM_KEYS.some(k => k !== key && normHeader(examLabel(k)) === normHeader(label))) { showToast('فيه امتحان بنفس الاسم'); return; }
+  const labels = Object.assign({}, db.examLabels);
+  if (/^m\d+$/.test(key) && label === 'M-(' + key.slice(1) + ')') delete labels[key]; else labels[key] = label;
+  db.examLabels = labels;
+  saveDB();
+  renderManage();
+  showToast('تم تغيير الاسم ✓');
 }
 
 function removeLastExam() {
@@ -2526,7 +2567,9 @@ function removeLastExam() {
 
 function renderManage() {
   const g = mgGroup;
-  document.getElementById('mgExams').textContent = EXAM_KEYS.map(k => examLabel(k)).join('  •  ');
+  document.getElementById('mgExams').innerHTML = EXAM_KEYS.map(k =>
+    '<span style="display:inline-flex;align-items:center;gap:4px;background:#f1f5f9;border-radius:8px;padding:3px 4px 3px 8px;margin:2px;font-size:12px">' + escHtml(examLabel(k)) +
+    '<button onclick="renameExam(\'' + k + '\')" title="تغيير الاسم" style="border:none;background:none;cursor:pointer;font-size:12px;padding:0 2px">✏️</button></span>').join('');
   document.getElementById('mgBoys').style.background = g === 'boys' ? '#0f766e' : '#fff';
   document.getElementById('mgBoys').style.color = g === 'boys' ? '#fff' : '#0f766e';
   document.getElementById('mgGirls').style.background = g === 'girls' ? '#0f766e' : '#fff';
@@ -2627,10 +2670,7 @@ function openReportFromModal() {
 }
 
 function levelColor(p) { return p >= 80 ? '#16a34a' : (p >= 60 ? '#d97706' : '#dc2626'); }
-function parseHwPercent(v) {
-  const t = toEnDigits(String(v || '')).replace('%', '').trim();
-  return /^\d+(\.\d+)?$/.test(t) ? parseFloat(t) : null;
-}
+function parseHwPercent(v) { return hwPercentOf(v); }
 
 async function openStudentReport(g, row) {
   if (currentRole !== 'admin') { showToast('التقرير متاح للمدير فقط'); return; }
@@ -2694,7 +2734,7 @@ function buildStudentReport(g, st, h) {
   if (!examRows.length) html += '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">لسه مفيش درجات متسجلة.</div>';
   else html += examRows.map(x => {
     const arrow = (x.pv.kind === 'score' && x.avg !== null) ? (x.pv.score > x.avg + 0.05 ? '<span style="color:#16a34a">▲ أعلى من المتوسط</span>' : (x.pv.score < x.avg - 0.05 ? '<span style="color:#dc2626">▼ أقل من المتوسط</span>' : '<span style="color:#64748b">= قريب من المتوسط</span>')) : '';
-    const val = x.pv.kind === 'score' ? '<b>' + x.pv.score + '</b>' + (x.pct !== null ? ' <span style="color:' + levelColor(x.pct) + ';font-size:11px">(' + Math.round(x.pct) + '%)</span>' : '') : '<b>' + (x.pv.kind === 'absent' ? 'غايب' : escHtml(st[x.k])) + '</b>';
+    const val = x.pv.kind === 'score' ? '<b>' + escHtml(String(st[x.k]).trim()) + '</b>' + (x.pct !== null ? ' <span style="color:' + levelColor(x.pct) + ';font-size:11px">(' + Math.round(x.pct) + '%)</span>' : '') : '<b>' + (x.pv.kind === 'absent' ? 'غايب' : escHtml(st[x.k])) + '</b>';
     return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 2px;font-size:13px">
       <span style="font-weight:700">${escHtml(examLabel(x.k))}</span><span>${val}</span>
       <span style="font-size:11px;color:var(--muted)">${x.avg !== null ? 'متوسط المجموعة ' + x.avg.toFixed(1) : ''} ${arrow}</span></div>`;
@@ -2707,7 +2747,7 @@ function buildStudentReport(g, st, h) {
     const s2 = x.s; const done = x.ended && x.ended[g] === true;
     let status = s2.present ? tag('حاضر', '#dcfce7', '#166534') : (done ? tag('غايب', '#fee2e2', '#991b1b') : tag('لم يحضر', '#e2e8f0', '#475569'));
     let hw = '';
-    if (s2.present && s2.hw) hw = tag(s2.hw === 'nohw' ? 'No HW' : escHtml(s2.hw), s2.hw === 'nohw' ? '#fef3c7' : '#e0f2fe', s2.hw === 'nohw' ? '#92400e' : '#075985');
+    if (s2.present && s2.hw) hw = tag(s2.hw === 'nohw' ? 'No HW' : escHtml(fmtHw(s2.hw)), s2.hw === 'nohw' ? '#fef3c7' : '#e0f2fe', s2.hw === 'nohw' ? '#92400e' : '#075985');
     return `<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;border-bottom:1px solid var(--border);padding:6px 2px;font-size:12px">
       <span style="font-weight:700">${escHtml(weekdayAr(x.session_date))} ${escHtml(x.session_date)}</span>
       <span style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">${status}${hw}${done ? '' : tag('حصة غير مكتملة', '#f1f5f9', '#64748b')}</span></div>`;
@@ -2718,6 +2758,7 @@ function buildStudentReport(g, st, h) {
 
 /* ==================== IMPORT OLD SHEETS (admin) ==================== */
 let imp = { entries: [], resolve: {}, unmatched: {}, colMap: {}, colLabel: {}, overwrite: false, fillGrades: true, busy: false, report: null, seq: 0 };
+const MAX_EXAMS = 60;
 const TEST_LIKE = /test|exam|quiz|re-?test|retake|موديل|امتحان|اختبار|تقييم|كويز/i;
 
 function normName(s) {
@@ -2742,6 +2783,20 @@ function lev(a, b) {
   return prev[n];
 }
 function similarity(a, b) { const m = Math.max(a.length, b.length); return m ? 1 - lev(a, b) / m : 1; }
+
+// قيمة الواجب كنسبة: "90%" أو 0.9 (إكسيل بيخزّن 90% كـ 0.9). أي رقم تاني (27 مثلاً) مش نسبة مؤكدة.
+function hwPercentOf(v) {
+  const raw = String(v == null ? '' : v).trim();
+  if (!raw) return null;
+  const n = parseFloat(toEnDigits(raw).replace('%', ''));
+  if (isNaN(n) || !/^[\d.\u066B%\s٠-٩]+$/.test(raw)) return null;
+  if (raw.indexOf('%') >= 0) return n;
+  return n <= 1 ? n * 100 : null;
+}
+function fmtHw(v) {
+  const p = hwPercentOf(v);
+  return p === null ? String(v) : (Math.round(p * 10) / 10) + '%';
+}
 
 function normHw(v) {
   const t = String(v || '').trim();
@@ -2787,6 +2842,7 @@ function cleanHeader(t) {
 function detectHeader(grid) {
   for (let r = 1; r <= 15; r++) {
     const map = {}, exams = {}, others = {};
+    let hwMax = 0;
     for (let c = 1; c <= 60; c++) {
       const cell = grid.cells[r + ':' + c];
       if (!cell) continue;
@@ -2797,13 +2853,13 @@ function detectHeader(grid) {
       if (/^b\.?n\.?$/.test(tl) || tl === 'م' || tl === '#') map.bn = c;
       else if (tl === 'name' || tl.indexOf('الاسم') >= 0 || /^اسم/.test(tl)) map.name = c;
       else if (/egp|جنيه|غرامة/.test(tl)) map.egp = c;
-      else if (/h\.?w|واجب/.test(tl)) map.hw = c;
+      else if (/h\.?w|واجب/.test(tl)) { map.hw = c; const mx = /\/\s*(\d+(?:\.\d+)?)\s*\)/.exec(cell.v); if (mx) hwMax = parseFloat(mx[1]); }
       else if ((m = /^m-?\(?(\d+)\)?$/.exec(tl))) exams[+m[1]] = c;
       else if (/comment|تعليق|ملاحظ/.test(tl)) map.comments = c;
       else if (/absence|غياب/.test(tl)) map.absences = c;
       else others[c] = clean;
     }
-    if (map.name && (map.hw || map.egp || Object.keys(exams).length)) return { row: r, map, exams, others };
+    if (map.name && (map.hw || map.egp || Object.keys(exams).length)) return { row: r, map, exams, others, hwMax };
   }
   return null;
 }
@@ -2878,7 +2934,14 @@ function extractStudents(grid, header) {
     Object.keys(exams).forEach(n => { const v = txt(exams[n]); if (v) ex[n] = v; });
     const extra = {};
     Object.keys(header.others || {}).forEach(c => { const v = txt(+c); if (v) extra[header.others[c]] = v; });
-    out.push({ name, egp30: num(map.egp), hw: txt(map.hw), exams: ex, extra, comments: txt(map.comments), absences: Math.round(num(map.absences)) });
+    let hwText = txt(map.hw);
+    const hwCell = get(r, map.hw);
+    if (hwCell && hwCell.num) {
+      const n = parseFloat(hwCell.v);
+      if (header.hwMax) hwText = (Math.round(n / header.hwMax * 1000) / 10) + '%';
+      else if (n <= 1) hwText = (Math.round(n * 1000) / 10) + '%';
+    }
+    out.push({ name, egp30: num(map.egp), hw: hwText, exams: ex, extra, comments: txt(map.comments), absences: Math.round(num(map.absences)) });
   }
   return out;
 }
@@ -3058,6 +3121,8 @@ function renderImport() {
   if (cols.length || newM.length) {
     html += '<div style="font-weight:800;margin:12px 0 4px;font-size:13px">أعمدة الامتحانات والأعمدة التانية</div><div style="font-size:11px;color:var(--muted);line-height:1.7;margin-bottom:6px">أي عمود اسمه مش من الأعمدة المعروفة (زي Test-Fr أو Re-test) اختار هل هو امتحان وهيتضاف للأداة باسمه، ولا تتجاهله.</div>';
     if (newM.length) html += '<div style="font-size:12px;line-height:1.8;margin-bottom:6px">موديلات جديدة هتتضاف تلقائياً: <b>' + newM.sort((a, b) => a - b).map(n => 'M-(' + n + ')').join(' • ') + '</b></div>';
+    const willAdd = newM.length + cols.filter(c => imp.colMap[c.key] === 'exam' && !EXAM_KEYS.some(x => normHeader(examLabel(x)) === c.key)).length;
+    html += '<div style="font-size:12px;line-height:1.8;margin-bottom:6px;font-weight:700;color:' + (EXAM_KEYS.length + willAdd > MAX_EXAMS ? '#dc2626' : '#0f766e') + '">هيتضاف ' + willAdd + ' امتحان جديد (الإجمالي ' + (EXAM_KEYS.length + willAdd) + ' من ' + MAX_EXAMS + ')' + (EXAM_KEYS.length + willAdd > MAX_EXAMS ? ' ⚠️ أكتر من الحد: خلّي بعض الأعمدة "تجاهل"' : '') + '</div>';
     cols.forEach(c => {
       html += `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 2px">
         <div style="font-size:13px;font-weight:700">${escHtml(c.label)} <span style="font-size:11px;color:var(--muted)">(${c.count} شيت)</span></div>
@@ -3153,7 +3218,7 @@ async function importCommit() {
     });
     if (addKeys.length) {
       db.examLabels = Object.assign({}, db.examLabels, addLabels);
-      db.exams = EXAM_KEYS.concat(addKeys.slice(0, Math.max(0, 30 - EXAM_KEYS.length)));
+      db.exams = EXAM_KEYS.concat(addKeys.slice(0, Math.max(0, MAX_EXAMS - EXAM_KEYS.length)));
       applyExamKeys();
       saveDB();
       await pushChanges();
@@ -3332,7 +3397,7 @@ function renderHistoryRows() {
     let status = s.present ? tag('حاضر', '#dcfce7', '#166534')
       : ((s.hw === 'absent' || endedG) ? tag('غايب', '#fee2e2', '#991b1b') : tag('لم يحضر', '#e2e8f0', '#475569'));
     let hw = '';
-    if (s.hw && s.hw !== 'absent') hw = tag(s.hw === 'nohw' ? 'No HW' : escHtml(s.hw), '#e0f2fe', '#075985');
+    if (s.hw && s.hw !== 'absent') hw = tag(s.hw === 'nohw' ? 'No HW' : escHtml(fmtHw(s.hw)), '#e0f2fe', '#075985');
     const money = s.egp30 > 0 ? tag(s.egp30 + ' EGP', '#fef3c7', '#92400e') : '';
     const abs = s.absences > 0 ? tag('غياب ' + s.absences, '#fce7f3', '#9d174d') : '';
     const grades = EXAM_KEYS.filter(k => s[k] !== undefined && String(s[k]).trim() !== '')
